@@ -35,10 +35,11 @@
   (reset)
   (finish-output *terminal-io*))
 
-(defun render (width height)
+(defun render (width height &optional dialog-only)
   "Render the current view"
-  (clear-screen)
-  (draw-header width)
+  (unless dialog-only
+    (clear-screen)
+    (draw-header width))
   ;; Adjust for header
   (draw-view *current-view* width (1- height)))
 
@@ -62,23 +63,16 @@
             ((eq result :log)
              (switch-view :log))
             ((eq result :branches)
-             (switch-view :branches))
-            ((eq result :commit)
-             ;; TODO: implement commit dialog
-             nil))
-          ;; Check for global keys
-          (when (key-event-char key)
-            (case (key-event-char key)
-              (#\1 (switch-view :status))
-              (#\2 (switch-view :log))
-              (#\3 (switch-view :branches))))
-          ;; Re-render
+             (switch-view :branches)))
+          ;; Check for terminal resize
           (let ((new-size (terminal-size)))
             (when new-size
               (setf width (first new-size)
                     height (second new-size))))
-          (render width height)
-          (finish-output))))))
+          ;; Re-render only if not just dialog update
+          (unless (eq result :dialog)
+            (render width height)
+            (finish-output *terminal-io*)))))))
 
 (defun run ()
   "Entry point - run Gilt"

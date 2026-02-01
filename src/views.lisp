@@ -301,9 +301,12 @@
               (refresh-data view))))
          (setf (active-dialog view) nil))
         ((eq result :cancel)
-         (setf (active-dialog view) nil))))
+         (setf (active-dialog view) nil))
+        (t
+         ;; Dialog is still active, just redraw the dialog only
+         (draw-dialog (active-dialog view) (screen-width view) (screen-height view)))))
     ;; ALWAYS return here when dialog is active - never fall through to main key handling
-    (return-from handle-key nil))
+    (return-from handle-key :dialog))
   
   (let* ((focused-idx (view-focused-panel view))
          (panel (nth focused-idx (view-panels view))))

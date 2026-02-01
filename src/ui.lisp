@@ -237,7 +237,7 @@
 (defmethod draw-dialog ((dlg dialog) screen-width screen-height)
   "Draw a simple dialog box"
   (let* ((w (if (dialog-input-mode dlg) 70 50))
-         (h 3)
+         (h 4)  ; 4 rows: top border, content, bottom border, +1 for 0-indexing
          (x (floor (- screen-width w) 2))
          (y (floor (- screen-height h) 2)))
     ;; Draw box with rounded corners
