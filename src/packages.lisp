@@ -149,6 +149,10 @@
            #:dialog-buttons
            #:dialog-selected-button
            #:dialog-input-mode
+           #:dialog-input-lines
+           #:dialog-cursor-line
+           #:dialog-multiline
+           #:dialog-get-text
            #:draw-dialog
            #:handle-dialog-key))
 
