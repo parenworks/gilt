@@ -83,8 +83,11 @@ Each commit line shows:
 |-----|--------|
 | `Space` | Stage/unstage selected file |
 | `a` | Stage all files |
-| `e` | Enter hunk staging mode (partial staging) |
+| `e` | Edit file (conflicts) or enter hunk staging mode |
 | `d` | Discard changes to selected file |
+| `o` | Resolve conflict with "ours" (your version) |
+| `t` | Resolve conflict with "theirs" (incoming version) |
+| `X` (capital) | Abort merge in progress |
 | `s` | Stash all changes |
 | `c` | Open commit dialog |
 | `P` (capital) | Push to remote |
@@ -94,8 +97,10 @@ Each commit line shows:
 
 | Key | Action |
 |-----|--------|
-| `Enter` | Checkout selected branch |
+| `Enter` | Checkout branch (local) or track remote branch |
 | `n` | Create new branch |
+| `w` | Toggle between Local branches and Remotes view |
+| `f` | Fetch from all remotes |
 | `M` (capital) | Merge selected branch into current |
 | `D` (capital) | Delete selected branch |
 
@@ -206,6 +211,38 @@ Temporarily save your changes:
 1. Press `P` (capital) from any panel to push
 2. Press `p` (lowercase) from any panel to pull
 3. A status indicator shows "Pushing..." or "Pulling..." during the operation
+
+### Working with Remote Branches
+
+Fetch, view, and track remote branches:
+
+1. Navigate to the **Branches panel** (`Tab` or press `3`)
+2. Press `f` to fetch the latest from all remotes
+3. Press `w` to switch to **Remotes** view (panel title changes to "Remotes")
+4. Remote branches are displayed in **cyan** (e.g., `origin/main`, `origin/feature-branch`)
+5. Select a remote branch and press `Enter` to create a local tracking branch
+6. Press `w` again to switch back to **Local branches** view
+
+**Note:** When you track a remote branch, Gilt creates a local branch with the same name (without the remote prefix) and checks it out automatically.
+
+### Resolving Merge Conflicts
+
+When a merge results in conflicts, conflicted files appear with a **red `!`** indicator:
+
+1. Navigate to the **Files panel** (`Tab` or press `2`)
+2. Conflicted files show `! filename` in **bright red**
+3. For each conflicted file, you have three options:
+   - Press `e` to **edit** the file in your `$EDITOR` (vim by default)
+   - Press `o` to **use ours** (keep your version, discard theirs)
+   - Press `t` to **use theirs** (keep incoming version, discard yours)
+4. After resolving all conflicts, press `c` to commit the merge
+5. If you want to cancel the merge entirely, press `X` (capital) to **abort**
+
+**Editing conflicts manually:**
+- When you press `e`, Gilt spawns your editor with the conflicted file
+- Look for conflict markers: `<<<<<<<`, `=======`, `>>>>>>>`
+- Edit the file to resolve conflicts, save, and exit
+- The file will still show as conflicted until you stage it with `Space`
 
 ---
 

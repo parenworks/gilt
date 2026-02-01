@@ -193,6 +193,12 @@
            #:git-commit
            #:git-checkout
            #:git-merge
+           #:git-merge-abort
+           #:git-merge-in-progress-p
+           #:git-mark-resolved
+           #:git-edit-file
+           #:git-resolve-with-ours
+           #:git-resolve-with-theirs
            #:git-delete-branch
            #:git-fetch
            #:git-remote-branches

@@ -106,6 +106,10 @@
     (values
      ;; Status type (from working tree column Y, or index column X if staged)
      (cond
+       ;; Conflict states - both modified, added by us/them, deleted by us/them
+       ((or (string= xy "UU") (string= xy "AA") (string= xy "DD")
+            (string= xy "AU") (string= xy "UA") (string= xy "DU") (string= xy "UD"))
+        :conflict)
        ((char= y #\M) :modified)
        ((char= y #\A) :added)
        ((char= y #\D) :deleted)
@@ -120,7 +124,8 @@
        (t :unknown))
      ;; Staged?
      (and (not (char= x #\Space))
-          (not (char= x #\?))))))
+          (not (char= x #\?))
+          (not (char= x #\U))))))
 
 (defun git-status ()
   "Get list of status-entry for current repo"
@@ -315,6 +320,38 @@
 (defun git-merge (branch)
   "Merge a branch into current branch"
   (git-run "merge" branch))
+
+(defun git-merge-abort ()
+  "Abort a merge in progress"
+  (git-run "merge" "--abort"))
+
+(defun git-merge-in-progress-p ()
+  "Check if a merge is in progress"
+  (let ((git-dir (string-trim '(#\Newline #\Space)
+                              (git-run "rev-parse" "--git-dir"))))
+    (probe-file (merge-pathnames "MERGE_HEAD" git-dir))))
+
+(defun git-mark-resolved (file)
+  "Mark a conflicted file as resolved by staging it"
+  (git-run "add" file))
+
+(defun git-edit-file (file)
+  "Open a file in the user's preferred editor ($EDITOR or vi)"
+  (let ((editor (or (uiop:getenv "EDITOR") "vi")))
+    (uiop:run-program (list editor file)
+                      :input :interactive
+                      :output :interactive
+                      :error-output :interactive)))
+
+(defun git-resolve-with-ours (file)
+  "Resolve conflict by keeping our version"
+  (git-run "checkout" "--ours" file)
+  (git-run "add" file))
+
+(defun git-resolve-with-theirs (file)
+  "Resolve conflict by keeping their version"
+  (git-run "checkout" "--theirs" file)
+  (git-run "add" file))
 
 (defun git-delete-branch (branch)
   "Delete a branch"

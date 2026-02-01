@@ -172,6 +172,7 @@
                       (:deleted "D")
                       (:untracked "?")
                       (:renamed "R")
+                      (:conflict "!")
                       (t " ")))
          (color (case status
                   (:modified :bright-yellow)
@@ -179,6 +180,7 @@
                   (:deleted :bright-red)
                   (:untracked :bright-magenta)
                   (:renamed :bright-cyan)
+                  (:conflict :bright-red)  ; Conflicts shown in bright red with !
                   (t :white)))
          (text (format nil "~A ~A" indicator (status-entry-file entry))))
     (list :colored color text)))
@@ -259,8 +261,8 @@
     (0 ; Status panel
      '(("j/k" . "navigate") ("Tab" . "panels") ("q" . "quit")))
     (1 ; Files panel
-     '(("j/k" . "navigate") ("Space" . "stage/unstage") ("e" . "hunks") ("d" . "discard")
-       ("s" . "stash") ("a" . "stage all") ("c" . "commit") ("P" . "push") ("q" . "quit")))
+     '(("j/k" . "navigate") ("Space" . "stage/unstage") ("e" . "edit/hunks") ("d" . "discard")
+       ("o" . "use ours") ("t" . "use theirs") ("X" . "abort merge") ("c" . "commit") ("q" . "quit")))
     (2 ; Branches panel
      '(("j/k" . "navigate") ("Enter" . "checkout/track") ("n" . "new") ("f" . "fetch")
        ("w" . "local/remote") ("M" . "merge") ("D" . "delete") ("q" . "quit")))
@@ -466,7 +468,12 @@
                 (when hash
                   (log-command view (format nil "git revert ~A" hash))
                   (git-revert hash)
-                  (refresh-data view))))))
+                  (refresh-data view))))
+             ;; Abort Merge dialog
+             ((string= (dialog-title dlg) "Abort Merge")
+              (log-command view "git merge --abort")
+              (git-merge-abort)
+              (refresh-data view))))
          (setf (active-dialog view) nil))
         ((eq result :cancel)
          (setf (active-dialog view) nil))
@@ -651,6 +658,40 @@
          (git-stash-pop)
          (refresh-data view))
        nil)
+      ;; Resolve conflict with ours - 'o' (when on files panel with conflict)
+      ((and (key-event-char key) (char= (key-event-char key) #\o))
+       (when (= focused-idx 1)  ; Files panel
+         (let* ((entries (status-entries view))
+                (selected (panel-selected panel)))
+           (when (and entries (< selected (length entries)))
+             (let ((entry (nth selected entries)))
+               (when (eq (status-entry-status entry) :conflict)
+                 (log-command view (format nil "git checkout --ours ~A && git add ~A" 
+                                           (status-entry-file entry) (status-entry-file entry)))
+                 (git-resolve-with-ours (status-entry-file entry))
+                 (refresh-data view))))))
+       nil)
+      ;; Resolve conflict with theirs - 't' (when on files panel with conflict)
+      ((and (key-event-char key) (char= (key-event-char key) #\t))
+       (when (= focused-idx 1)  ; Files panel
+         (let* ((entries (status-entries view))
+                (selected (panel-selected panel)))
+           (when (and entries (< selected (length entries)))
+             (let ((entry (nth selected entries)))
+               (when (eq (status-entry-status entry) :conflict)
+                 (log-command view (format nil "git checkout --theirs ~A && git add ~A"
+                                           (status-entry-file entry) (status-entry-file entry)))
+                 (git-resolve-with-theirs (status-entry-file entry))
+                 (refresh-data view))))))
+       nil)
+      ;; Abort merge - 'X' (capital, when on files panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\X))
+       (when (= focused-idx 1)  ; Files panel
+         (setf (active-dialog view)
+               (make-dialog :title "Abort Merge"
+                            :message "Abort the current merge? All merge progress will be lost."
+                            :buttons '("Abort" "Cancel"))))
+       nil)
       ;; Discard changes - 'd' (when on files panel)
       ((and (key-event-char key) (char= (key-event-char key) #\d))
        (when (= focused-idx 1)  ; Files panel
@@ -763,27 +804,40 @@
                                   :data (list :hash hash)
                                   :buttons '("Revert" "Cancel")))))))
        nil)
-      ;; Hunk staging - 'e' (when on files panel, for edit/partial staging)
+      ;; Edit/Hunk staging - 'e' (when on files panel)
+      ;; For conflicts: spawn editor. For normal files: hunk staging mode
       ((and (key-event-char key) (char= (key-event-char key) #\e))
        (when (= focused-idx 1)  ; Files panel
          (let* ((entries (status-entries view))
                 (selected (panel-selected panel)))
            (when (and entries (< selected (length entries)))
              (let* ((entry (nth selected entries))
-                    (file (status-entry-file entry)))
-               (unless (or (status-entry-staged-p entry)
-                           (eq (status-entry-status entry) :untracked))
-                 ;; Parse hunks and show in main panel for selection
-                 (let ((hunks (parse-diff-hunks file)))
-                   (when hunks
-                     (setf (hunk-list view) hunks)
-                     (setf (hunk-mode view) t)
-                     (setf (panel-items (main-panel view))
-                           (loop for hunk in hunks
-                                 for i from 1
-                                 collect (format nil "Hunk ~D: ~A (+~D lines)"
-                                                 i (hunk-header hunk)
-                                                 (hunk-line-count hunk)))))))))))
+                    (file (status-entry-file entry))
+                    (status (status-entry-status entry)))
+               (cond
+                 ;; Conflict - spawn editor to resolve
+                 ((eq status :conflict)
+                  (log-command view (format nil "$EDITOR ~A" file))
+                  ;; Restore terminal before spawning editor
+                  (restore-terminal)
+                  (git-edit-file file)
+                  ;; Re-enter raw mode after editor exits
+                  (setup-terminal)
+                  (clear-screen)
+                  (refresh-data view))
+                 ;; Normal file - hunk staging mode
+                 ((not (or (status-entry-staged-p entry)
+                           (eq status :untracked)))
+                  (let ((hunks (parse-diff-hunks file)))
+                    (when hunks
+                      (setf (hunk-list view) hunks)
+                      (setf (hunk-mode view) t)
+                      (setf (panel-items (main-panel view))
+                            (loop for hunk in hunks
+                                  for i from 1
+                                  collect (format nil "Hunk ~D: ~A (+~D lines)"
+                                                  i (hunk-header hunk)
+                                                  (hunk-line-count hunk))))))))))))
        nil)
       (t nil))))
 
