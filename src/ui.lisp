@@ -231,10 +231,12 @@
    (selected-button :initarg :selected-button :accessor dialog-selected-button :initform 0)
    (input-mode :initarg :input-mode :accessor dialog-input-mode :initform nil)
    (multiline :initarg :multiline :accessor dialog-multiline :initform nil)
-   (height :initarg :height :accessor dialog-height :initform 3))
+   (height :initarg :height :accessor dialog-height :initform 3)
+   (data :initarg :data :accessor dialog-data :initform nil
+         :documentation "Arbitrary data storage for dialog context"))
   (:documentation "A modal dialog box with optional multi-line input"))
 
-(defun make-dialog (&key title message (buttons '("OK" "Cancel")) input-mode multiline)
+(defun make-dialog (&key title message (buttons '("OK" "Cancel")) input-mode multiline data)
   "Create a dialog"
   (make-instance 'dialog
                  :title title
@@ -242,6 +244,7 @@
                  :buttons buttons
                  :input-mode input-mode
                  :multiline multiline
+                 :data data
                  :height (if multiline 12 3)))
 
 (defmethod print-object ((dlg dialog) stream)
@@ -423,12 +426,12 @@
      (setf (dialog-selected-button dlg)
            (mod (1+ (dialog-selected-button dlg)) (length (dialog-buttons dlg))))
      nil)
-    ;; Enter in multiline - check if Commit button selected, else new line
+    ;; Enter in multiline - check if action button selected (not Cancel), else new line
     ((and (dialog-multiline dlg)
           (eq (key-event-code key) +key-enter+))
      (let ((btn (nth (dialog-selected-button dlg) (dialog-buttons dlg))))
-       (if (string= btn "Commit")
-           :ok  ; Commit button selected - confirm
+       (if (not (string= btn "Cancel"))
+           :ok  ; Action button selected (Commit, Squash, etc.) - confirm
            ;; Add new line
            (let* ((lines (dialog-input-lines dlg))
                   (cur-line (dialog-cursor-line dlg))

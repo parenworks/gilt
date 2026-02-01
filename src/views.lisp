@@ -54,7 +54,10 @@
    ;; Dialog state
    (active-dialog :accessor active-dialog :initform nil)
    (screen-width :accessor screen-width :initform 80)
-   (screen-height :accessor screen-height :initform 24)))
+   (screen-height :accessor screen-height :initform 24)
+   ;; Hunk staging mode
+   (hunk-list :accessor hunk-list :initform nil)
+   (hunk-mode :accessor hunk-mode :initform nil)))
 
 (defmethod initialize-instance :after ((view main-view) &key)
   ;; Create all panels
@@ -186,13 +189,13 @@
     (0 ; Status panel
      '(("j/k" . "navigate") ("Tab" . "panels") ("q" . "quit")))
     (1 ; Files panel
-     '(("j/k" . "navigate") ("Space" . "stage/unstage") ("d" . "discard") ("s" . "stash")
-       ("a" . "stage all") ("c" . "commit") ("P" . "push") ("q" . "quit")))
+     '(("j/k" . "navigate") ("Space" . "stage/unstage") ("e" . "hunks") ("d" . "discard")
+       ("s" . "stash") ("a" . "stage all") ("c" . "commit") ("P" . "push") ("q" . "quit")))
     (2 ; Branches panel
      '(("j/k" . "navigate") ("Enter" . "checkout") ("n" . "new") ("M" . "merge")
        ("D" . "delete") ("Tab" . "panels") ("q" . "quit")))
     (3 ; Commits panel
-     '(("j/k" . "navigate") ("Enter" . "view") ("Tab" . "panels") ("q" . "quit")))
+     '(("j/k" . "navigate") ("S" . "squash") ("C" . "cherry-pick") ("R" . "revert") ("q" . "quit")))
     (4 ; Stash panel
      '(("j/k" . "navigate") ("s" . "stash") ("g" . "pop") ("Tab" . "panels") ("q" . "quit")))
     (t ; Default
@@ -337,7 +340,31 @@
              ((string= (dialog-title dlg) "Pull")
               (log-command view "git pull")
               (git-pull)
-              (refresh-data view))))
+              (refresh-data view))
+             ;; Squash dialog
+             ((string= (dialog-title dlg) "Squash Commits")
+              (let ((msg (dialog-get-text dlg)))
+                (when (> (length msg) 0)
+                  ;; Get count from stored data in message
+                  (let* ((stored (getf (dialog-data dlg) :count))
+                         (count (or stored 2)))
+                    (log-command view (format nil "git reset --soft HEAD~~~D && git commit" count))
+                    (git-squash-commits count msg)
+                    (refresh-data view)))))
+             ;; Cherry-pick dialog
+             ((string= (dialog-title dlg) "Cherry Pick")
+              (let ((hash (getf (dialog-data dlg) :hash)))
+                (when hash
+                  (log-command view (format nil "git cherry-pick ~A" hash))
+                  (git-cherry-pick hash)
+                  (refresh-data view))))
+             ;; Revert dialog
+             ((string= (dialog-title dlg) "Revert Commit")
+              (let ((hash (getf (dialog-data dlg) :hash)))
+                (when hash
+                  (log-command view (format nil "git revert ~A" hash))
+                  (git-revert hash)
+                  (refresh-data view))))))
          (setf (active-dialog view) nil))
         ((eq result :cancel)
          (setf (active-dialog view) nil))
@@ -346,6 +373,45 @@
          (draw-dialog (active-dialog view) (screen-width view) (screen-height view)))))
     ;; ALWAYS return here when dialog is active - never fall through to main key handling
     (return-from handle-key :dialog))
+  
+  ;; Handle hunk mode first
+  (when (hunk-mode view)
+    (cond
+      ;; Escape exits hunk mode
+      ((eq (key-event-code key) +key-escape+)
+       (setf (hunk-mode view) nil)
+       (setf (hunk-list view) nil)
+       (update-main-content view)
+       (return-from handle-key nil))
+      ;; Space stages selected hunk
+      ((and (key-event-char key) (char= (key-event-char key) #\Space))
+       (let* ((hunks (hunk-list view))
+              (selected (panel-selected (main-panel view))))
+         (when (and hunks (< selected (length hunks)))
+           (let ((hunk (nth selected hunks)))
+             (log-command view (format nil "git apply --cached (hunk ~D)" (1+ selected)))
+             (git-stage-hunk hunk)
+             ;; Remove staged hunk from list
+             (setf (hunk-list view) (remove hunk hunks))
+             (if (hunk-list view)
+                 (setf (panel-items (main-panel view))
+                       (loop for h in (hunk-list view)
+                             for i from 1
+                             collect (format nil "Hunk ~D: ~A (+~D lines)"
+                                             i (hunk-header h) (hunk-line-count h))))
+                 (progn
+                   (setf (hunk-mode view) nil)
+                   (refresh-data view))))))
+       (return-from handle-key nil))
+      ;; Navigation in hunk list
+      ((or (eq (key-event-code key) +key-down+)
+           (and (key-event-char key) (char= (key-event-char key) #\j)))
+       (panel-select-next (main-panel view))
+       (return-from handle-key nil))
+      ((or (eq (key-event-code key) +key-up+)
+           (and (key-event-char key) (char= (key-event-char key) #\k)))
+       (panel-select-prev (main-panel view))
+       (return-from handle-key nil))))
   
   (let* ((focused-idx (view-focused-panel view))
          (panel (nth focused-idx (view-panels view))))
@@ -521,6 +587,74 @@
                        (make-dialog :title "Delete Branch"
                                     :message (format nil "Delete branch ~A?" branch)
                                     :buttons '("Delete" "Cancel"))))))))
+       nil)
+      ;; Squash commits - 'S' (capital, when on commits panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\S))
+       (when (= focused-idx 3)  ; Commits panel
+         (let ((selected (panel-selected panel)))
+           (when (> selected 0)  ; Need at least 2 commits to squash
+             (let ((count (1+ selected)))  ; selected is 0-indexed, squash from HEAD to selected
+               (setf (active-dialog view)
+                     (make-dialog :title "Squash Commits"
+                                  :message (format nil "Squash last ~D commits into one" count)
+                                  :input-mode t
+                                  :multiline t
+                                  :data (list :count count)
+                                  :buttons '("Squash" "Cancel")))))))
+       nil)
+      ;; Cherry-pick - 'C' (capital, when on commits panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\C))
+       (when (= focused-idx 3)  ; Commits panel
+         (let* ((commits (commit-list view))
+                (selected (panel-selected panel)))
+           (when (and commits (< selected (length commits)))
+             (let* ((commit (nth selected commits))
+                    (hash (log-entry-hash commit))
+                    (short-hash (log-entry-short-hash commit))
+                    (msg (log-entry-message commit)))
+               (setf (active-dialog view)
+                     (make-dialog :title "Cherry Pick"
+                                  :message (format nil "Cherry-pick ~A: ~A?" short-hash msg)
+                                  :data (list :hash hash)
+                                  :buttons '("Pick" "Cancel")))))))
+       nil)
+      ;; Revert - 'R' (capital, when on commits panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\R))
+       (when (= focused-idx 3)  ; Commits panel
+         (let* ((commits (commit-list view))
+                (selected (panel-selected panel)))
+           (when (and commits (< selected (length commits)))
+             (let* ((commit (nth selected commits))
+                    (hash (log-entry-hash commit))
+                    (short-hash (log-entry-short-hash commit))
+                    (msg (log-entry-message commit)))
+               (setf (active-dialog view)
+                     (make-dialog :title "Revert Commit"
+                                  :message (format nil "Revert ~A: ~A?" short-hash msg)
+                                  :data (list :hash hash)
+                                  :buttons '("Revert" "Cancel")))))))
+       nil)
+      ;; Hunk staging - 'e' (when on files panel, for edit/partial staging)
+      ((and (key-event-char key) (char= (key-event-char key) #\e))
+       (when (= focused-idx 1)  ; Files panel
+         (let* ((entries (status-entries view))
+                (selected (panel-selected panel)))
+           (when (and entries (< selected (length entries)))
+             (let* ((entry (nth selected entries))
+                    (file (status-entry-file entry)))
+               (unless (or (status-entry-staged-p entry)
+                           (eq (status-entry-status entry) :untracked))
+                 ;; Parse hunks and show in main panel for selection
+                 (let ((hunks (parse-diff-hunks file)))
+                   (when hunks
+                     (setf (hunk-list view) hunks)
+                     (setf (hunk-mode view) t)
+                     (setf (panel-items (main-panel view))
+                           (loop for hunk in hunks
+                                 for i from 1
+                                 collect (format nil "Hunk ~D: ~A (+~D lines)"
+                                                 i (hunk-header hunk)
+                                                 (hunk-line-count hunk)))))))))))
        nil)
       (t nil))))
 

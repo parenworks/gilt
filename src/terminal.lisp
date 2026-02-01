@@ -162,6 +162,11 @@
     (setf (reader-stream reader) nil))
   reader)
 
+(defun read-byte-nonblocking (stream)
+  "Try to read a byte without blocking. Returns byte or nil."
+  (when (listen stream)
+    (read-byte stream nil nil)))
+
 (defmethod read-key-event ((reader input-reader))
   "Read a key event from the TTY"
   (let* ((stream (reader-stream reader))
@@ -169,14 +174,17 @@
     (unless byte
       (return-from read-key-event (make-key-event :char #\q)))
     (cond
-      ;; Escape sequence
+      ;; Escape sequence or bare escape
       ((= byte 27)
-       (let ((next (read-byte stream nil nil)))
+       ;; Small delay then check for more bytes (escape sequences)
+       (sleep 0.02)
+       (let ((next (read-byte-nonblocking stream)))
          (cond
            ((null next)
+            ;; No more bytes - bare Escape key
             (make-key-event :code +key-escape+))
            ((= next 91)
-            ;; Parse CSI sequence
+            ;; CSI sequence: ESC [
             (let ((params nil)
                   (final-byte nil))
               (loop
@@ -204,6 +212,7 @@
                      (t (make-key-event :code :unknown))))
                   (t (make-key-event :code :unknown))))))
            (t
+            ;; Alt + key
             (make-key-event :char (code-char next) :alt-p t)))))
       ;; Control characters
       ((< byte 32)
@@ -211,6 +220,7 @@
          ((= byte 13) (make-key-event :code +key-enter+))
          ((= byte 9) (make-key-event :code +key-tab+))
          ((= byte 127) (make-key-event :code +key-backspace+))
+         ((= byte 8) (make-key-event :code +key-backspace+))  ; Some terminals send 8 for backspace
          (t (make-key-event :char (code-char (+ byte 96)) :ctrl-p t))))
       ;; Regular character
       (t

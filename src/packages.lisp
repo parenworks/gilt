@@ -152,6 +152,7 @@
            #:dialog-input-lines
            #:dialog-cursor-line
            #:dialog-multiline
+           #:dialog-data
            #:dialog-get-text
            #:draw-dialog
            #:handle-dialog-key))
@@ -193,6 +194,19 @@
            #:git-checkout
            #:git-merge
            #:git-delete-branch
+           #:git-squash-commits
+           #:git-cherry-pick
+           #:git-revert
+           #:log-entry
+           #:diff-hunk
+           #:hunk-file
+           #:hunk-start-line
+           #:hunk-line-count
+           #:hunk-header
+           #:hunk-content
+           #:hunk-selected-p
+           #:parse-diff-hunks
+           #:git-stage-hunk
            #:git-stash
            #:git-stash-pop
            #:git-stash-list
