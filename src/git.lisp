@@ -293,7 +293,7 @@
 (defun git-squash-commits (count &optional message)
   "Squash the last COUNT commits into one. Uses soft reset + commit approach."
   (let ((head-ref (string-trim '(#\Newline #\Space) 
-                               (git-run "rev-parse" (format nil "HEAD~~D" count)))))
+                               (git-run "rev-parse" (format nil "HEAD~~~D" count)))))
     (git-run "reset" "--soft" head-ref)
     (if message
         (git-run "commit" "-m" message)
@@ -415,12 +415,6 @@
   (if (and remote branch)
       (git-run "pull" remote branch)
       (git-run "pull")))
-
-(defun git-fetch (&optional remote)
-  "Fetch from remote"
-  (if remote
-      (git-run "fetch" remote)
-      (git-run "fetch" "--all")))
 
 (defun git-remotes ()
   "List remote names"
