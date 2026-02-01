@@ -226,6 +226,8 @@
            #:git-create-branch
            #:git-push
            #:git-pull
+           #:git-push-interactive
+           #:git-pull-interactive
            #:git-fetch
            #:git-remotes
            #:git-remote-url

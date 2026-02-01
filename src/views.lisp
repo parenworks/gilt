@@ -424,26 +424,30 @@
              ;; Push dialog
              ((string= (dialog-title dlg) "Push")
               (log-command view "git push")
-              (show-status-message "Pushing..." (screen-width view) (screen-height view))
-              (finish-output *terminal-io*)
-              (git-push)
+              ;; Restore terminal for interactive git (credential prompts)
+              (restore-terminal)
+              (git-push-interactive)
+              ;; Re-enter raw mode after git exits
+              (setup-terminal)
               (log-command view "git push completed")
               ;; Clear dialog first, then refresh to force full redraw
               (setf (active-dialog view) nil)
               (refresh-data view)
-              (clear-screen)  ; Force full screen clear
+              (clear-screen)
               (return-from handle-key nil))
              ;; Pull dialog
              ((string= (dialog-title dlg) "Pull")
               (log-command view "git pull")
-              (show-status-message "Pulling..." (screen-width view) (screen-height view))
-              (finish-output *terminal-io*)
-              (git-pull)
+              ;; Restore terminal for interactive git (credential prompts)
+              (restore-terminal)
+              (git-pull-interactive)
+              ;; Re-enter raw mode after git exits
+              (setup-terminal)
               (log-command view "git pull completed")
               ;; Clear dialog first, then refresh to force full redraw
               (setf (active-dialog view) nil)
               (refresh-data view)
-              (clear-screen)  ; Force full screen clear
+              (clear-screen)
               (return-from handle-key nil))
              ;; Squash dialog
              ((string= (dialog-title dlg) "Squash Commits")

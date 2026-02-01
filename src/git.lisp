@@ -404,6 +404,20 @@
 
 ;;; Push/Pull/Fetch
 
+(defun git-push-interactive ()
+  "Push to remote interactively (allows credential prompts)"
+  (uiop:run-program '("git" "push")
+                    :input :interactive
+                    :output :interactive
+                    :error-output :interactive))
+
+(defun git-pull-interactive ()
+  "Pull from remote interactively (allows credential prompts)"
+  (uiop:run-program '("git" "pull")
+                    :input :interactive
+                    :output :interactive
+                    :error-output :interactive))
+
 (defun git-push (&optional remote branch)
   "Push to remote"
   (if (and remote branch)
