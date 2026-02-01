@@ -212,6 +212,35 @@
   "List stashes"
   (git-run-lines "stash" "list"))
 
+;;; Push/Pull/Fetch
+
+(defun git-push (&optional remote branch)
+  "Push to remote"
+  (if (and remote branch)
+      (git-run "push" remote branch)
+      (git-run "push")))
+
+(defun git-pull (&optional remote branch)
+  "Pull from remote"
+  (if (and remote branch)
+      (git-run "pull" remote branch)
+      (git-run "pull")))
+
+(defun git-fetch (&optional remote)
+  "Fetch from remote"
+  (if remote
+      (git-run "fetch" remote)
+      (git-run "fetch" "--all")))
+
+(defun git-remotes ()
+  "List remote names"
+  (git-run-lines "remote"))
+
+(defun git-remote-url (remote)
+  "Get URL for a remote"
+  (string-trim '(#\Newline #\Space)
+               (git-run "remote" "get-url" remote)))
+
 ;;; Repo info
 
 (defun git-repo-root ()
@@ -223,3 +252,15 @@
   "Get repository name from root directory"
   (let ((root (git-repo-root)))
     (car (last (cl-ppcre:split "/" root)))))
+
+;;; Ahead/behind tracking
+
+(defun git-ahead-behind ()
+  "Get ahead/behind counts for current branch vs upstream.
+   Returns (ahead . behind) or nil if no upstream."
+  (let ((output (git-run "rev-list" "--left-right" "--count" "@{upstream}...HEAD")))
+    (when (and output (> (length output) 0))
+      (let ((parts (cl-ppcre:split "\\s+" (string-trim '(#\Newline #\Space #\Tab) output))))
+        (when (= (length parts) 2)
+          (cons (parse-integer (second parts) :junk-allowed t)
+                (parse-integer (first parts) :junk-allowed t)))))))

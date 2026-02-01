@@ -134,7 +134,23 @@
            #:draw-status-bar
            #:panel-select-next
            #:panel-select-prev
-           #:panel-scroll-to-selection))
+           #:panel-scroll-to-selection
+           ;; Dialog class
+           #:dialog
+           #:make-dialog
+           #:dialog-x
+           #:dialog-y
+           #:dialog-width
+           #:dialog-height
+           #:dialog-title
+           #:dialog-message
+           #:dialog-input-buffer
+           #:dialog-input-label
+           #:dialog-buttons
+           #:dialog-selected-button
+           #:dialog-input-mode
+           #:draw-dialog
+           #:handle-dialog-key))
 
 (defpackage #:gilt.git
   (:use #:cl)
@@ -173,18 +189,32 @@
            #:git-checkout
            #:git-stash
            #:git-stash-pop
+           #:git-stash-list
+           #:git-stage-all
+           #:git-discard-file
+           #:git-amend
+           #:git-create-branch
+           #:git-push
+           #:git-pull
+           #:git-fetch
+           #:git-remotes
+           #:git-remote-url
+           #:git-ahead-behind
            #:git-repo-root
            #:git-repo-name))
 
 (defpackage #:gilt.views
   (:use #:cl #:gilt.ansi #:gilt.terminal #:gilt.ui #:gilt.git)
   (:export #:view
+           #:main-view
            #:status-view
-           #:diff-view
            #:log-view
            #:branches-view
            #:draw-view
-           #:handle-key))
+           #:handle-key
+           #:refresh-data
+           #:init-views
+           #:*current-view*))
 
 (defpackage #:gilt
   (:use #:cl #:gilt.ansi #:gilt.terminal #:gilt.ui #:gilt.git #:gilt.views)
