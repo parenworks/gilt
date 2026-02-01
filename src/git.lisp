@@ -148,6 +148,70 @@
       (git-run "diff" "--cached" "--color=always" "--" file)
       (git-run "diff" "--cached" "--color=always")))
 
+;;; Hunk class for partial staging
+
+(defclass diff-hunk ()
+  ((file :initarg :file :accessor hunk-file :initform nil)
+   (start-line :initarg :start-line :accessor hunk-start-line :initform 0)
+   (line-count :initarg :line-count :accessor hunk-line-count :initform 0)
+   (header :initarg :header :accessor hunk-header :initform nil)
+   (content :initarg :content :accessor hunk-content :initform nil)
+   (selected-p :initarg :selected-p :accessor hunk-selected-p :initform nil))
+  (:documentation "Represents a diff hunk for partial staging"))
+
+(defmethod print-object ((hunk diff-hunk) stream)
+  (print-unreadable-object (hunk stream :type t)
+    (format stream "~A:~D (~D lines)~@[ selected~]"
+            (hunk-file hunk) (hunk-start-line hunk) 
+            (hunk-line-count hunk) (hunk-selected-p hunk))))
+
+(defun parse-diff-hunks (file)
+  "Parse diff output into individual hunks for a file"
+  (let* ((diff-output (git-run "diff" "-U3" "--" file))
+         (lines (cl-ppcre:split "\\n" diff-output))
+         (hunks nil)
+         (current-hunk nil)
+         (current-content nil))
+    (dolist (line lines)
+      (cond
+        ;; Hunk header: @@ -start,count +start,count @@
+        ((cl-ppcre:scan "^@@" line)
+         ;; Save previous hunk if any
+         (when current-hunk
+           (setf (hunk-content current-hunk) (nreverse current-content))
+           (push current-hunk hunks))
+         ;; Parse new hunk header
+         (multiple-value-bind (match regs)
+             (cl-ppcre:scan-to-strings "^@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@" line)
+           (declare (ignore match))
+           (when regs
+             (setf current-hunk (make-instance 'diff-hunk
+                                               :file file
+                                               :start-line (parse-integer (aref regs 2) :junk-allowed t)
+                                               :line-count (if (aref regs 3)
+                                                               (parse-integer (aref regs 3) :junk-allowed t)
+                                                               1)
+                                               :header line)
+                   current-content (list line)))))
+        ;; Content line (part of current hunk)
+        (current-hunk
+         (push line current-content))))
+    ;; Save last hunk
+    (when current-hunk
+      (setf (hunk-content current-hunk) (nreverse current-content))
+      (push current-hunk hunks))
+    (nreverse hunks)))
+
+(defun git-stage-hunk (hunk)
+  "Stage a specific hunk using git apply"
+  (let ((patch (format nil "~{~A~%~}" (hunk-content hunk))))
+    ;; Create a proper patch with file headers
+    (let ((full-patch (format nil "--- a/~A~%+++ b/~A~%~A"
+                              (hunk-file hunk) (hunk-file hunk) patch)))
+      (with-input-from-string (s full-patch)
+        (sb-ext:run-program "/usr/bin/git" '("apply" "--cached" "-")
+                            :input s :output nil :error nil)))))
+
 ;;; Log entry class
 
 (defclass log-entry ()

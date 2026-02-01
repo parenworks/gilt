@@ -315,6 +315,8 @@
                                 do (write-char #\Space *terminal-io*)))
                         (loop repeat (- text-width (length display-text)) 
                               do (write-char #\Space *terminal-io*))))
+                  ;; Position right border explicitly
+                  (cursor-to screen-row (+ x w -1))
                   (fg (color-code :bright-cyan))
                   (write-char (box-char :vertical) *terminal-io*))
          ;; Button row
@@ -331,10 +333,8 @@
                   (write-string (format nil " ~A " btn) *terminal-io*)
                   (bg (color-code 236))
                   (write-char #\Space *terminal-io*))
-         (let* ((btn-width (+ (reduce #'+ (dialog-buttons dlg) :key #'length)
-                              (* 4 (length (dialog-buttons dlg)))))
-                (padding (- content-width btn-width 1)))
-           (loop repeat (max 0 padding) do (write-char #\Space *terminal-io*)))
+         ;; Position right border explicitly for button row
+         (cursor-to (+ y h -2) (+ x w -1))
          (fg (color-code :bright-cyan))
          (write-char (box-char :vertical) *terminal-io*)))
       
@@ -348,16 +348,15 @@
               (buf (if lines (first lines) ""))
               (display-buf (if (> (length buf) input-width)
                                (subseq buf (- (length buf) input-width))
-                               buf))
-              (padding (- input-width (length display-buf))))
+                               buf)))
          (fg (color-code :bright-green))
          (write-string " ❯ " *terminal-io*)
          (fg (color-code :bright-white))
          (write-string display-buf *terminal-io*)
          (fg (color-code :bright-cyan))
-         (write-char #\▌ *terminal-io*)
-         (bg (color-code 236))
-         (loop repeat padding do (write-char #\Space *terminal-io*)))
+         (write-char #\▌ *terminal-io*))
+       ;; Position right border explicitly
+       (cursor-to (1+ y) (+ x w -1))
        (fg (color-code :bright-cyan))
        (write-char (box-char :vertical) *terminal-io*))
       
@@ -367,11 +366,7 @@
        (write-char (box-char :vertical) *terminal-io*)
        (bg (color-code 236))
        (let* ((msg (or (dialog-message dlg) ""))
-              (buttons (dialog-buttons dlg))
-              (btn-text (with-output-to-string (s)
-                          (loop for btn in buttons do (format s " ~A  " btn))))
-              (used (+ 4 (length msg) (length btn-text)))
-              (padding (- content-width used)))
+              (buttons (dialog-buttons dlg)))
          (fg (color-code :bright-green))
          (write-string " ? " *terminal-io*)
          (fg (color-code :bright-white))
@@ -385,12 +380,13 @@
                       (progn (bg (color-code 240)) (fg (color-code :bright-white))))
                   (write-string (format nil " ~A " btn) *terminal-io*)
                   (bg (color-code 236))
-                  (write-char #\Space *terminal-io*))
-         (loop repeat (max 0 padding) do (write-char #\Space *terminal-io*)))
+                  (write-char #\Space *terminal-io*)))
+       ;; Position right border explicitly
+       (cursor-to (1+ y) (+ x w -1))
        (fg (color-code :bright-cyan))
        (write-char (box-char :vertical) *terminal-io*)))
     
-    ;; Bottom border with hint
+    ;; Bottom border with hint - position explicitly to ensure alignment
     (cursor-to (+ y h -1) x)
     (write-char (box-char :bottom-left) *terminal-io*)
     (fg (color-code :white))
@@ -403,6 +399,8 @@
       (write-string hint *terminal-io*)
       (fg (color-code :bright-cyan))
       (loop repeat (max 0 border-len) do (write-char (box-char :horizontal) *terminal-io*)))
+    ;; Position explicitly for right corner
+    (cursor-to (+ y h -1) (+ x w -1))
     (write-char (box-char :bottom-right) *terminal-io*)
     (reset)
     (finish-output *terminal-io*)))
@@ -475,9 +473,12 @@
      (setf (dialog-selected-button dlg)
            (mod (1+ (dialog-selected-button dlg)) (length (dialog-buttons dlg))))
      nil)
-    ;; Backspace in input mode
+    ;; Backspace in input mode (check both code and Ctrl+H)
     ((and (dialog-input-mode dlg)
-          (eq (key-event-code key) +key-backspace+))
+          (or (eq (key-event-code key) +key-backspace+)
+              (and (key-event-char key) 
+                   (char= (key-event-char key) #\h)
+                   (key-event-ctrl-p key))))
      (let* ((lines (dialog-input-lines dlg))
             (cur-line (dialog-cursor-line dlg))
             (cur-text (nth cur-line lines)))

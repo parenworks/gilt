@@ -59,29 +59,33 @@
 
 (defmethod app-handle-key ((app application) key)
   (let ((result (handle-key (app-current-view app) key)))
-    (cond
-      ((eq result :quit) nil)
-      ((eq result :status) (app-switch-view app :status) t)
-      ((eq result :log) (app-switch-view app :log) t)
-      ((eq result :branches) (app-switch-view app :branches) t)
-      (t t))))
+    (values
+     (cond
+       ((eq result :quit) nil)
+       ((eq result :status) (app-switch-view app :status) t)
+       ((eq result :log) (app-switch-view app :log) t)
+       ((eq result :branches) (app-switch-view app :branches) t)
+       (t t))
+     (eq result :dialog))))  ; Return second value indicating dialog-only redraw
 
 (defmethod app-run ((app application))
   (setf (app-running-p app) t)
   (app-render app)
   (loop while (app-running-p app) do
-    (let* ((key (read-key))
-           (continue-p (app-handle-key app key)))
-      (unless continue-p
-        (setf (app-running-p app) nil)
-        (return))
-      ;; Check for terminal resize
-      (let ((new-size (terminal-size)))
-        (when new-size
-          (setf (app-width app) (first new-size)
-                (app-height app) (second new-size))))
-      ;; Re-render
-      (app-render app))))
+    (let* ((key (read-key)))
+      (multiple-value-bind (continue-p dialog-only)
+          (app-handle-key app key)
+        (unless continue-p
+          (setf (app-running-p app) nil)
+          (return))
+        ;; Check for terminal resize
+        (let ((new-size (terminal-size)))
+          (when new-size
+            (setf (app-width app) (first new-size)
+                  (app-height app) (second new-size))))
+        ;; Re-render - skip full redraw if dialog is handling input
+        (unless dialog-only
+          (app-render app))))))
 
 ;;; Global application instance
 (defparameter *app* nil "The current Gilt application instance")
