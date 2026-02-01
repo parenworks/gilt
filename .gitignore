@@ -1,0 +1,11 @@
+# Executable
+gilt
+
+# Lisp compiled files
+*.fasl
+*.fas
+*.lib
+*.o
+
+# ASDF cache
+.cache/
