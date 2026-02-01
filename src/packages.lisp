@@ -191,6 +191,8 @@
            #:git-unstage-file
            #:git-commit
            #:git-checkout
+           #:git-merge
+           #:git-delete-branch
            #:git-stash
            #:git-stash-pop
            #:git-stash-list

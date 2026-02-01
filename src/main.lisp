@@ -3,23 +3,92 @@
 ;;; Main Application Loop
 ;;; LazyGit-style Git TUI
 
-(defparameter *current-view* nil)
-(defparameter *views* nil)
+;;; Application class - encapsulates all application state
 
-(defun init-views ()
-  "Initialize all views"
-  (setf *views* (make-hash-table :test 'eq))
-  (setf (gethash :status *views*) (make-instance 'status-view))
-  (setf (gethash :log *views*) (make-instance 'log-view))
-  (setf (gethash :branches *views*) (make-instance 'branches-view))
-  (setf *current-view* (gethash :status *views*)))
+(defclass application ()
+  ((views :initarg :views :accessor app-views :initform (make-hash-table :test 'eq))
+   (current-view :initarg :current-view :accessor app-current-view :initform nil)
+   (width :initarg :width :accessor app-width :initform 80)
+   (height :initarg :height :accessor app-height :initform 24)
+   (running-p :initarg :running-p :accessor app-running-p :initform nil))
+  (:documentation "Main Gilt application state"))
 
-(defun switch-view (view-key)
-  "Switch to a different view"
-  (let ((view (gethash view-key *views*)))
+(defmethod print-object ((app application) stream)
+  (print-unreadable-object (app stream :type t)
+    (format stream "~Dx~D ~:[stopped~;running~]"
+            (app-width app) (app-height app) (app-running-p app))))
+
+(defgeneric app-init (app)
+  (:documentation "Initialize the application"))
+
+(defgeneric app-switch-view (app view-key)
+  (:documentation "Switch to a different view"))
+
+(defgeneric app-render (app &optional dialog-only)
+  (:documentation "Render the current view"))
+
+(defgeneric app-handle-key (app key)
+  (:documentation "Handle a key event, return t to continue, nil to quit"))
+
+(defgeneric app-run (app)
+  (:documentation "Run the main event loop"))
+
+(defmethod app-init ((app application))
+  (setf (gethash :status (app-views app)) (make-instance 'status-view))
+  (setf (gethash :log (app-views app)) (make-instance 'log-view))
+  (setf (gethash :branches (app-views app)) (make-instance 'branches-view))
+  (setf (app-current-view app) (gethash :status (app-views app)))
+  (let ((size (terminal-size)))
+    (when size
+      (setf (app-width app) (first size)
+            (app-height app) (second size))))
+  app)
+
+(defmethod app-switch-view ((app application) view-key)
+  (let ((view (gethash view-key (app-views app))))
     (when view
-      (setf *current-view* view)
+      (setf (app-current-view app) view)
       (refresh-data view))))
+
+(defmethod app-render ((app application) &optional dialog-only)
+  (unless dialog-only
+    (clear-screen)
+    (draw-header (app-width app)))
+  (draw-view (app-current-view app) (app-width app) (1- (app-height app)))
+  (finish-output *terminal-io*))
+
+(defmethod app-handle-key ((app application) key)
+  (let ((result (handle-key (app-current-view app) key)))
+    (cond
+      ((eq result :quit) nil)
+      ((eq result :status) (app-switch-view app :status) t)
+      ((eq result :log) (app-switch-view app :log) t)
+      ((eq result :branches) (app-switch-view app :branches) t)
+      (t t))))
+
+(defmethod app-run ((app application))
+  (setf (app-running-p app) t)
+  (app-render app)
+  (loop while (app-running-p app) do
+    (let* ((key (read-key))
+           (continue-p (app-handle-key app key)))
+      (unless continue-p
+        (setf (app-running-p app) nil)
+        (return))
+      ;; Check for terminal resize
+      (let ((new-size (terminal-size)))
+        (when new-size
+          (setf (app-width app) (first new-size)
+                (app-height app) (second new-size))))
+      ;; Re-render
+      (app-render app))))
+
+;;; Global application instance
+(defparameter *app* nil "The current Gilt application instance")
+
+;;; Legacy compatibility - delegate to *app*
+(defun current-view ()
+  (when *app* (app-current-view *app*)))
 
 (defun draw-header (width)
   "Draw the header bar with repo info"
@@ -35,50 +104,12 @@
   (reset)
   (finish-output *terminal-io*))
 
-(defun render (width height &optional dialog-only)
-  "Render the current view"
-  (unless dialog-only
-    (clear-screen)
-    (draw-header width))
-  ;; Adjust for header
-  (draw-view *current-view* width (1- height)))
-
-(defun main-loop ()
-  "Main event loop"
-  (let ((size (terminal-size)))
-    (when (null size)
-      (setf size '(80 24)))
-    (let ((width (first size))
-          (height (second size)))
-      (render width height)
-      (finish-output *terminal-io*)
-      (loop
-        (let* ((key (read-key))
-               (result (handle-key *current-view* key)))
-          (cond
-            ((eq result :quit)
-             (return))
-            ((eq result :status)
-             (switch-view :status))
-            ((eq result :log)
-             (switch-view :log))
-            ((eq result :branches)
-             (switch-view :branches)))
-          ;; Check for terminal resize
-          (let ((new-size (terminal-size)))
-            (when new-size
-              (setf width (first new-size)
-                    height (second new-size))))
-          ;; Re-render only if not just dialog update
-          (unless (eq result :dialog)
-            (render width height)
-            (finish-output *terminal-io*)))))))
-
 (defun run ()
   "Entry point - run Gilt"
   (with-raw-terminal
-    (init-views)
-    (main-loop)))
+    (setf *app* (make-instance 'application))
+    (app-init *app*)
+    (app-run *app*)))
 
 (defun main ()
   "Main entry point for executable"

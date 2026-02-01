@@ -25,6 +25,14 @@
   (make-instance 'panel :x x :y y :width width :height height
                         :title title :items items :selected selected :focused focused))
 
+(defmethod print-object ((panel panel) stream)
+  (print-unreadable-object (panel stream :type t)
+    (format stream "~A ~Dx~D at (~D,~D)~@[ focused~]"
+            (or (panel-title panel) "untitled")
+            (panel-width panel) (panel-height panel)
+            (panel-x panel) (panel-y panel)
+            (panel-focused panel))))
+
 ;;; Box drawing characters (Unicode)
 
 (defparameter *box-chars*
@@ -236,6 +244,13 @@
                  :multiline multiline
                  :height (if multiline 12 3)))
 
+(defmethod print-object ((dlg dialog) stream)
+  (print-unreadable-object (dlg stream :type t)
+    (format stream "~A~@[ input-mode~]~@[ multiline~]"
+            (dialog-title dlg)
+            (dialog-input-mode dlg)
+            (dialog-multiline dlg))))
+
 (defgeneric draw-dialog (dialog width height)
   (:documentation "Draw the dialog centered on screen"))
 
@@ -430,7 +445,7 @@
     ;; Enter - confirm (single-line or confirmation)
     ((eq (key-event-code key) +key-enter+)
      (if (dialog-input-mode dlg)
-         :ok
+         :ok  ; Single-line input always confirms on Enter
          (let ((btn (nth (dialog-selected-button dlg) (dialog-buttons dlg))))
            (if (string= btn "Cancel") :cancel :ok))))
     ;; Up arrow in multiline

@@ -125,111 +125,53 @@
        (leave-alternate-screen)
        (reset))))
 
-;;; Input reader class
+;;; Input reader class - reads from /dev/tty
 
 (defclass input-reader ()
-  ((stream :initarg :stream :accessor reader-stream :initform *standard-input*))
-  (:documentation "Reads and parses keyboard input"))
+  ((stream :initarg :stream :accessor reader-stream :initform nil)
+   (tty-path :initarg :tty-path :accessor reader-tty-path :initform "/dev/tty"))
+  (:documentation "Reads and parses keyboard input from TTY"))
+
+(defmethod print-object ((reader input-reader) stream)
+  (print-unreadable-object (reader stream :type t)
+    (format stream "~A ~:[closed~;open~]"
+            (reader-tty-path reader)
+            (and (reader-stream reader) (open-stream-p (reader-stream reader))))))
+
+(defgeneric reader-open (reader)
+  (:documentation "Open the TTY stream for reading"))
+
+(defgeneric reader-close (reader)
+  (:documentation "Close the TTY stream"))
 
 (defgeneric read-key-event (reader)
   (:documentation "Read a key event from the input stream"))
 
-(defgeneric read-byte-with-timeout (reader timeout-ms)
-  (:documentation "Read a byte with timeout, return nil if no input"))
+(defmethod reader-open ((reader input-reader))
+  (unless (and (reader-stream reader) (open-stream-p (reader-stream reader)))
+    (setf (reader-stream reader)
+          (open (reader-tty-path reader)
+                :direction :input
+                :element-type '(unsigned-byte 8)
+                :if-does-not-exist :error)))
+  reader)
 
-(defmethod read-byte-with-timeout ((reader input-reader) timeout-ms)
-  (declare (ignore timeout-ms))
-  (let ((stream (reader-stream reader)))
-    (when (listen stream)
-      (read-byte stream nil nil))))
+(defmethod reader-close ((reader input-reader))
+  (when (and (reader-stream reader) (open-stream-p (reader-stream reader)))
+    (close (reader-stream reader))
+    (setf (reader-stream reader) nil))
+  reader)
 
 (defmethod read-key-event ((reader input-reader))
+  "Read a key event from the TTY"
   (let* ((stream (reader-stream reader))
          (byte (read-byte stream nil nil)))
     (unless byte
-      ;; EOF or error - return quit
       (return-from read-key-event (make-key-event :char #\q)))
     (cond
       ;; Escape sequence
       ((= byte 27)
-       (let ((next (read-byte-with-timeout reader 50)))
-         (cond
-           ((null next)
-            (make-key-event :code +key-escape+))
-           ((= next 91)
-            (parse-csi-sequence reader))
-           (t
-            (make-key-event :char (code-char next) :alt-p t)))))
-      ;; Control characters
-      ((< byte 32)
-       (cond
-         ((= byte 13) (make-key-event :code +key-enter+))
-         ((= byte 9) (make-key-event :code +key-tab+))
-         ((= byte 127) (make-key-event :code +key-backspace+))
-         (t (make-key-event :char (code-char (+ byte 96)) :ctrl-p t))))
-      ;; Regular character
-      (t
-       (make-key-event :char (code-char byte))))))
-
-(defun parse-csi-sequence (reader)
-  "Parse a CSI escape sequence (ESC [ ...)"
-  (let ((stream (reader-stream reader))
-        (params nil)
-        (byte nil))
-    (loop
-      (setf byte (read-byte stream))
-      (cond
-        ((and (>= byte 48) (<= byte 57))
-         (push (code-char byte) params))
-        ((= byte 59)
-         (push #\; params))
-        (t (return))))
-    (let ((param-str (coerce (nreverse params) 'string)))
-      (case byte
-        (65 (make-key-event :code +key-up+))
-        (66 (make-key-event :code +key-down+))
-        (67 (make-key-event :code +key-right+))
-        (68 (make-key-event :code +key-left+))
-        (72 (make-key-event :code +key-home+))
-        (70 (make-key-event :code +key-end+))
-        (126
-         (cond
-           ((string= param-str "3") (make-key-event :code +key-delete+))
-           ((string= param-str "5") (make-key-event :code +key-page-up+))
-           ((string= param-str "6") (make-key-event :code +key-page-down+))
-           (t (make-key-event :code :unknown))))
-        (t (make-key-event :code :unknown))))))
-
-;;; Low-level byte reading - open /dev/tty directly
-
-(defparameter *tty-stream* nil)
-
-(defun get-tty-stream ()
-  "Get or open the TTY stream for reading"
-  (unless (and *tty-stream* (open-stream-p *tty-stream*))
-    (setf *tty-stream* (open "/dev/tty" 
-                              :direction :input
-                              :element-type '(unsigned-byte 8)
-                              :if-does-not-exist :error)))
-  *tty-stream*)
-
-(defun close-tty-stream ()
-  "Close the TTY stream"
-  (when (and *tty-stream* (open-stream-p *tty-stream*))
-    (close *tty-stream*)
-    (setf *tty-stream* nil)))
-
-(defun read-one-byte ()
-  "Read a single byte from terminal"
-  (read-byte (get-tty-stream)))
-
-(defun read-key ()
-  "Read a key event from terminal. Blocks until key pressed."
-  (let ((byte (read-one-byte)))
-    (cond
-      ;; Escape sequence
-      ((= byte 27)
-       (let ((next (read-one-byte)))
+       (let ((next (read-byte stream nil nil)))
          (cond
            ((null next)
             (make-key-event :code +key-escape+))
@@ -238,7 +180,7 @@
             (let ((params nil)
                   (final-byte nil))
               (loop
-                (setf final-byte (read-one-byte))
+                (setf final-byte (read-byte stream nil nil))
                 (unless final-byte (return))
                 (cond
                   ((and (>= final-byte 48) (<= final-byte 57))
@@ -273,3 +215,16 @@
       ;; Regular character
       (t
        (make-key-event :char (code-char byte))))))
+
+;;; Global input reader instance
+(defparameter *input-reader* (make-instance 'input-reader)
+  "Global input reader for keyboard events")
+
+(defun close-tty-stream ()
+  "Close the TTY stream"
+  (reader-close *input-reader*))
+
+(defun read-key ()
+  "Read a key event from terminal. Blocks until key pressed."
+  (reader-open *input-reader*)
+  (read-key-event *input-reader*))

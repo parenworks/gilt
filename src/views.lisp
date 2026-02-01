@@ -10,6 +10,12 @@
    (focused-panel :initarg :focused-panel :accessor view-focused-panel :initform 0)
    (needs-refresh :initarg :needs-refresh :accessor view-needs-refresh :initform t)))
 
+(defmethod print-object ((view view) stream)
+  (print-unreadable-object (view stream :type t)
+    (format stream "~D panels, focused=~D"
+            (length (view-panels view))
+            (view-focused-panel view))))
+
 (defgeneric draw-view (view width height)
   (:documentation "Draw the view to the terminal"))
 
@@ -117,7 +123,9 @@
                                 (log-entry-short-hash c)
                                 (log-entry-message c)))))
   ;; Stash panel
-  (setf (panel-items (stash-panel view)) nil)
+  (let ((stashes (git-stash-list)))
+    (setf (stash-list view) stashes)
+    (setf (panel-items (stash-panel view)) stashes))
   ;; Main panel - show diff for selected file
   (update-main-content view))
 
@@ -178,15 +186,15 @@
     (0 ; Status panel
      '(("j/k" . "navigate") ("Tab" . "panels") ("q" . "quit")))
     (1 ; Files panel
-     '(("j/k" . "navigate") ("Space" . "stage/unstage") ("a" . "stage all")
-       ("c" . "commit") ("P" . "push") ("p" . "pull") ("q" . "quit")))
+     '(("j/k" . "navigate") ("Space" . "stage/unstage") ("d" . "discard") ("s" . "stash")
+       ("a" . "stage all") ("c" . "commit") ("P" . "push") ("q" . "quit")))
     (2 ; Branches panel
-     '(("j/k" . "navigate") ("Enter" . "checkout") ("n" . "new branch")
-       ("Tab" . "panels") ("q" . "quit")))
+     '(("j/k" . "navigate") ("Enter" . "checkout") ("n" . "new") ("M" . "merge")
+       ("D" . "delete") ("Tab" . "panels") ("q" . "quit")))
     (3 ; Commits panel
      '(("j/k" . "navigate") ("Enter" . "view") ("Tab" . "panels") ("q" . "quit")))
     (4 ; Stash panel
-     '(("j/k" . "navigate") ("s" . "stash") ("p" . "pop") ("Tab" . "panels") ("q" . "quit")))
+     '(("j/k" . "navigate") ("s" . "stash") ("g" . "pop") ("Tab" . "panels") ("q" . "quit")))
     (t ; Default
      '(("j/k" . "navigate") ("Tab" . "panels") ("q" . "quit")))))
 
@@ -290,6 +298,36 @@
                                             (first (dialog-input-lines dlg))))
                   (git-commit msg)
                   (refresh-data view))))
+             ;; New Branch dialog
+             ((string= (dialog-title dlg) "New Branch")
+              (let ((name (first (dialog-input-lines dlg))))
+                (when (and name (> (length name) 0))
+                  (log-command view (format nil "git checkout -b ~A" name))
+                  (git-create-branch name)
+                  (refresh-data view))))
+             ;; Merge Branch dialog
+             ((string= (dialog-title dlg) "Merge Branch")
+              (let* ((msg (dialog-message dlg))
+                     (parts (cl-ppcre:split "\\|" msg))
+                     (branch (first parts)))
+                (when branch
+                  (log-command view (format nil "git merge ~A" branch))
+                  (git-merge branch)
+                  (refresh-data view))))
+             ;; Delete Branch dialog
+             ((string= (dialog-title dlg) "Delete Branch")
+              (let* ((msg (dialog-message dlg))
+                     (branch (cl-ppcre:scan-to-strings "Delete branch ([^?]+)" msg)))
+                (when branch
+                  ;; Extract branch name from message
+                  (multiple-value-bind (match regs)
+                      (cl-ppcre:scan-to-strings "Delete branch ([^?]+)" msg)
+                    (declare (ignore match))
+                    (when regs
+                      (let ((branch-name (string-trim " " (aref regs 0))))
+                        (log-command view (format nil "git branch -d ~A" branch-name))
+                        (git-delete-branch branch-name)
+                        (refresh-data view)))))))
              ;; Push dialog
              ((string= (dialog-title dlg) "Push")
               (log-command view "git push")
@@ -419,6 +457,70 @@
        (log-command view "git add -A")
        (git-stage-all)
        (refresh-data view)
+       nil)
+      ;; Stash - 's' (when on stash panel or files panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\s))
+       (when (or (= focused-idx 4) (= focused-idx 1))  ; Stash or Files panel
+         (log-command view "git stash")
+         (git-stash)
+         (refresh-data view))
+       nil)
+      ;; Stash pop - 'g' (when on stash panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\g))
+       (when (= focused-idx 4)  ; Stash panel
+         (log-command view "git stash pop")
+         (git-stash-pop)
+         (refresh-data view))
+       nil)
+      ;; Discard changes - 'd' (when on files panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\d))
+       (when (= focused-idx 1)  ; Files panel
+         (let* ((entries (status-entries view))
+                (selected (panel-selected panel)))
+           (when (and entries (< selected (length entries)))
+             (let ((entry (nth selected entries)))
+               (unless (eq (status-entry-status entry) :untracked)
+                 (log-command view (format nil "git checkout -- ~A" (status-entry-file entry)))
+                 (git-discard-file (status-entry-file entry))
+                 (refresh-data view))))))
+       nil)
+      ;; New branch - 'n' (when on branches panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\n))
+       (when (= focused-idx 2)  ; Branches panel
+         (setf (active-dialog view)
+               (make-dialog :title "New Branch"
+                            :input-mode t
+                            :buttons '("Create" "Cancel"))))
+       nil)
+      ;; Merge - 'M' (capital, when on branches panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\M))
+       (when (= focused-idx 2)  ; Branches panel
+         (let* ((branches (branch-list view))
+                (selected (panel-selected panel)))
+           (when (and branches (< selected (length branches)))
+             (let ((branch (nth selected branches)))
+               (unless (string= branch (current-branch view))
+                 (setf (active-dialog view)
+                       (make-dialog :title "Merge Branch"
+                                    :message (format nil "Merge ~A into ~A?" 
+                                                     branch (current-branch view))
+                                    :buttons '("Merge" "Cancel")))
+                 ;; Store branch name for later use
+                 (setf (dialog-message (active-dialog view))
+                       (format nil "~A|~A" branch (current-branch view))))))))
+       nil)
+      ;; Delete branch - 'D' (capital, when on branches panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\D))
+       (when (= focused-idx 2)  ; Branches panel
+         (let* ((branches (branch-list view))
+                (selected (panel-selected panel)))
+           (when (and branches (< selected (length branches)))
+             (let ((branch (nth selected branches)))
+               (unless (string= branch (current-branch view))
+                 (setf (active-dialog view)
+                       (make-dialog :title "Delete Branch"
+                                    :message (format nil "Delete branch ~A?" branch)
+                                    :buttons '("Delete" "Cancel"))))))))
        nil)
       (t nil))))
 

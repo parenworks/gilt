@@ -12,11 +12,27 @@
          :documentation "Repository name"))
   (:documentation "Represents a Git repository"))
 
+(defmethod print-object ((repo git-repository) stream)
+  (print-unreadable-object (repo stream :type t)
+    (format stream "~A at ~A" (repo-name repo) (repo-path repo))))
+
 (defgeneric repo-run (repo &rest args)
   (:documentation "Run a git command in the repository"))
 
 (defgeneric repo-run-lines (repo &rest args)
   (:documentation "Run a git command and return output as lines"))
+
+(defgeneric repo-status (repo)
+  (:documentation "Get status entries for repository"))
+
+(defgeneric repo-branches (repo)
+  (:documentation "Get list of branches"))
+
+(defgeneric repo-current-branch (repo)
+  (:documentation "Get current branch name"))
+
+(defgeneric repo-log (repo &key count)
+  (:documentation "Get commit log"))
 
 (defmethod repo-run ((repo git-repository) &rest args)
   (with-output-to-string (s)
@@ -30,20 +46,37 @@
   (let ((output (apply #'repo-run repo args)))
     (cl-ppcre:split "\\n" (string-trim '(#\Newline) output))))
 
-;;; Convenience functions using current directory
+(defmethod repo-current-branch ((repo git-repository))
+  (string-trim '(#\Newline #\Space)
+               (repo-run repo "rev-parse" "--abbrev-ref" "HEAD")))
+
+(defmethod repo-branches ((repo git-repository))
+  (repo-run-lines repo "branch" "--format=%(refname:short)"))
+
+;;; Global current repository instance
+(defparameter *current-repo* nil "The current git repository")
+
+(defun ensure-repo ()
+  "Ensure *current-repo* is initialized"
+  (unless *current-repo*
+    (let* ((root (string-trim '(#\Newline #\Space)
+                              (with-output-to-string (s)
+                                (sb-ext:run-program "/usr/bin/git" 
+                                                    '("rev-parse" "--show-toplevel")
+                                                    :output s :error nil :search t))))
+           (name (car (last (cl-ppcre:split "/" root)))))
+      (setf *current-repo* (make-instance 'git-repository :path root :name name))))
+  *current-repo*)
+
+;;; Convenience functions that delegate to *current-repo*
 
 (defun git-run (&rest args)
   "Run a git command and return output as string"
-  (with-output-to-string (s)
-    (sb-ext:run-program "/usr/bin/git" args
-                        :output s
-                        :error nil
-                        :search t)))
+  (apply #'repo-run (ensure-repo) args))
 
 (defun git-run-lines (&rest args)
   "Run a git command and return output as list of lines"
-  (let ((output (apply #'git-run args)))
-    (cl-ppcre:split "\\n" (string-trim '(#\Newline) output))))
+  (apply #'repo-run-lines (ensure-repo) args))
 
 ;;; Status entry class
 
@@ -188,6 +221,23 @@
   "Amend the last commit"
   (git-run "commit" "--amend" "--no-edit"))
 
+(defun git-squash-commits (count &optional message)
+  "Squash the last COUNT commits into one. Uses soft reset + commit approach."
+  (let ((head-ref (string-trim '(#\Newline #\Space) 
+                               (git-run "rev-parse" (format nil "HEAD~~D" count)))))
+    (git-run "reset" "--soft" head-ref)
+    (if message
+        (git-run "commit" "-m" message)
+        (git-run "commit" "--amend" "--no-edit"))))
+
+(defun git-cherry-pick (commit-hash)
+  "Cherry-pick a commit"
+  (git-run "cherry-pick" commit-hash))
+
+(defun git-revert (commit-hash)
+  "Revert a commit"
+  (git-run "revert" "--no-edit" commit-hash))
+
 ;;; Branches
 
 (defun git-checkout (branch)
@@ -197,6 +247,14 @@
 (defun git-create-branch (name)
   "Create and checkout a new branch"
   (git-run "checkout" "-b" name))
+
+(defun git-merge (branch)
+  "Merge a branch into current branch"
+  (git-run "merge" branch))
+
+(defun git-delete-branch (branch)
+  "Delete a branch"
+  (git-run "branch" "-d" branch))
 
 ;;; Stash
 
