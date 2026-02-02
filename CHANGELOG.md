@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-02-02
+
+### Added
+
+- **Stash Management**
+  - Stash list panel - Press `w` in Files panel to cycle to Stashes view
+  - Pop stash (`p` or `P`) - Apply and remove stash
+  - Apply stash (`Enter`) - Apply without removing
+  - Drop stash (`D`) - Delete a stash
+  - Stash with message (`s`) - Create named stashes
+  - Stash diff preview - View colored diff in main panel
+  - Main panel scrolling - Press `0` to focus, `j/k` to scroll
+
+- **Commit Operations**
+  - Amend commit (`A`) - Amend HEAD with or without new message
+  - Reset to commit (`X`) - Soft/Mixed/Hard reset options
+  - Fixup commit (`F`) - Create fixup! commit for autosquash
+
+## [0.10.0] - 2026-02-02
+
+### Added
+
+- Help overlay (`?` key) - View all keybindings
+- Async push/pull with in-TUI output and credential prompt support
+- Blame view (`b` on files) with commit info on Enter
+- Cherry-pick from branches (`C` on branches panel)
+- Commit search (`/`) - Filter by message or author
+- Status bar with branch tracking info (ahead/behind)
+- Tag support - Create (`t`), delete (`D`), view tags
+- Remote management - Add (`A`), rename (`R`), delete remote branches
+- Submodule support - View and update (`U`) submodules
+- Config viewer (`G`) - Browse git config (local/global/system)
+- Worktree management (`w` in Files panel) - Add (`A`), remove (`D`)
+
 ## [0.1.0] - 2026-02-02
 
 ### Added
@@ -59,5 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Branch tracking info (ahead/behind upstream)
   - Repository state indicator (MERGING, REBASING, etc.)
 
-[Unreleased]: https://github.com/parenworks/gilt/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/parenworks/gilt/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/parenworks/gilt/releases/tag/v0.11.0
+[0.10.0]: https://github.com/parenworks/gilt/releases/tag/v0.10.0
 [0.1.0]: https://github.com/parenworks/gilt/releases/tag/v0.1.0
