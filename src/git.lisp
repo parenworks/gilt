@@ -980,7 +980,7 @@
 
 (defun git-stash-show (index)
   "Get diff for stash at INDEX."
-  (git-run-output "stash" "show" "-p" (format nil "stash@{~D}" index)))
+  (git-run "stash" "show" "-p" (format nil "stash@{~D}" index)))
 
 (defun git-stash-branch (branch-name &optional index)
   "Create a branch from stash at INDEX."

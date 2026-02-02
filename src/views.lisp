@@ -373,24 +373,67 @@
           (list :bright-green indicator)
           (list :white (format nil " ~A" message)))))
 
+(defun format-diff-lines (diff-text)
+  "Format diff text with colors for display"
+  (loop for line in (cl-ppcre:split "\\n" diff-text)
+        collect (cond
+                  ;; Added lines - green
+                  ((and (> (length line) 0) (char= (char line 0) #\+))
+                   (list :colored :green line))
+                  ;; Removed lines - red
+                  ((and (> (length line) 0) (char= (char line 0) #\-))
+                   (list :colored :red line))
+                  ;; Hunk headers - cyan
+                  ((and (> (length line) 1) (string= (subseq line 0 2) "@@"))
+                   (list :colored :cyan line))
+                  ;; File headers - yellow
+                  ((or (and (> (length line) 4) (string= (subseq line 0 4) "diff"))
+                       (and (> (length line) 3) (string= (subseq line 0 3) "---"))
+                       (and (> (length line) 3) (string= (subseq line 0 3) "+++")))
+                   (list :colored :yellow line))
+                  ;; Index/mode lines - bright-black
+                  ((and (> (length line) 5) (string= (subseq line 0 5) "index"))
+                   (list :colored :bright-black line))
+                  ;; Plain text
+                  (t line))))
+
 (defun update-main-content (view)
   "Update main panel based on focused panel and selection"
   (let* ((focused-idx (view-focused-panel view))
          (panel (nth focused-idx (view-panels view)))
          (selected (panel-selected panel)))
     (cond
-      ;; Files panel focused - show diff
+      ;; Files panel focused - show diff, worktree info, or stash diff
       ((= focused-idx 1)
-       (let ((entries (status-entries view)))
-         (when (and entries (< selected (length entries)))
-           (let* ((entry (nth selected entries))
-                  (file (status-entry-file entry))
-                  (diff (if (status-entry-staged-p entry)
-                            (git-diff-staged file)
-                            (git-diff file))))
-             (setf (panel-title (main-panel view)) "[0] Diff")
-             (setf (panel-items (main-panel view))
-                   (cl-ppcre:split "\\n" diff))))))
+       (cond
+         ;; Stashes view - show stash diff
+         ((show-stashes view)
+          (let ((stashes (stash-list view)))
+            (if (and stashes (< selected (length stashes)))
+                (let* ((st (nth selected stashes))
+                       (diff (git-stash-show (stash-index st))))
+                  (setf (panel-title (main-panel view)) "[0] Stash Diff")
+                  (setf (panel-items (main-panel view))
+                        (format-diff-lines diff)))
+                (progn
+                  (setf (panel-title (main-panel view)) "[0] Stash")
+                  (setf (panel-items (main-panel view)) nil)))))
+         ;; Worktrees view - show worktree info
+         ((show-worktrees view)
+          (setf (panel-title (main-panel view)) "[0] Worktree")
+          (setf (panel-items (main-panel view)) nil))
+         ;; Files view - show file diff
+         (t
+          (let ((entries (status-entries view)))
+            (when (and entries (< selected (length entries)))
+              (let* ((entry (nth selected entries))
+                     (file (status-entry-file entry))
+                     (diff (if (status-entry-staged-p entry)
+                               (git-diff-staged file)
+                               (git-diff file))))
+                (setf (panel-title (main-panel view)) "[0] Diff")
+                (setf (panel-items (main-panel view))
+                      (format-diff-lines diff))))))))
       ;; Commits panel focused - show commit details with full message
       ((= focused-idx 3)
        (let ((commits (commit-list view)))
@@ -497,14 +540,22 @@
           (panel-y (cmdlog-panel view)) (1+ main-height)
           (panel-width (cmdlog-panel view)) right-width
           (panel-height (cmdlog-panel view)) cmdlog-height)
-    ;; Update focus state
-    (loop for panel in (view-panels view)
-          for i from 0
-          do (setf (panel-focused panel) (= i focused-idx)))
-    ;; Main panel gets focus in blame mode or cherry-pick mode
-    (setf (panel-focused (main-panel view))
-          (or (blame-mode view) (cherry-pick-mode view)))
-    ;; Draw all panels
+    ;; Update focus state - but only if main panel is not explicitly focused
+    (let ((main-panel-focused (panel-focused (main-panel view))))
+      (if main-panel-focused
+          ;; Main panel is focused - unfocus all LEFT panels only (not main panel)
+          (loop for panel in (view-panels view)
+                for i from 0 below 5  ; Only first 5 panels (left side)
+                do (setf (panel-focused panel) nil))
+          ;; Normal mode - focus the selected left panel
+          (progn
+            (loop for panel in (view-panels view)
+                  for i from 0
+                  do (setf (panel-focused panel) (= i focused-idx)))
+            ;; Main panel gets focus in blame mode or cherry-pick mode
+            (setf (panel-focused (main-panel view))
+                  (or (blame-mode view) (cherry-pick-mode view))))))
+    ;; Draw all panels (includes main-panel which is 6th in view-panels)
     (dolist (panel (view-panels view))
       (draw-panel panel))
     ;; Draw command log panel (not in focus cycle)
@@ -1311,6 +1362,25 @@
       ;; Quit
       ((and (key-event-char key) (char= (key-event-char key) #\q))
        :quit)
+      ;; j/k navigation when main panel is focused (must be before regular j/k)
+      ((and (panel-focused (main-panel view))
+            (or (eq (key-event-code key) +key-down+)
+                (and (key-event-char key) (char= (key-event-char key) #\j))))
+       (panel-select-next (main-panel view))
+       nil)
+      ((and (panel-focused (main-panel view))
+            (or (eq (key-event-code key) +key-up+)
+                (and (key-event-char key) (char= (key-event-char key) #\k))))
+       (panel-select-prev (main-panel view))
+       nil)
+      ;; Escape unfocuses main panel
+      ((and (panel-focused (main-panel view))
+            (eq (key-event-code key) +key-escape+))
+       (setf (panel-focused (main-panel view)) nil)
+       ;; Re-focus the previously focused left panel
+       (let ((p (nth focused-idx (view-panels view))))
+         (setf (panel-focused p) t))
+       nil)
       ;; Navigation within panel - down
       ((or (eq (key-event-code key) +key-down+)
            (and (key-event-char key) (char= (key-event-char key) #\j)))
@@ -1326,36 +1396,59 @@
       ;; Switch to next panel - Tab or l
       ((or (eq (key-event-code key) +key-tab+)
            (and (key-event-char key) (char= (key-event-char key) #\l)))
+       (setf (panel-focused (main-panel view)) nil)  ; Unfocus main panel
        (setf (view-focused-panel view)
              (mod (1+ focused-idx) 5))  ; Cycle through 5 left panels
        (update-main-content view)
        nil)
       ;; Switch to previous panel - h
       ((and (key-event-char key) (char= (key-event-char key) #\h))
+       (setf (panel-focused (main-panel view)) nil)  ; Unfocus main panel
        (setf (view-focused-panel view)
              (mod (1- focused-idx) 5))
        (update-main-content view)
        nil)
       ;; Direct panel selection with number keys
       ((and (key-event-char key) (char= (key-event-char key) #\1))
+       (setf (panel-focused (main-panel view)) nil)
        (setf (view-focused-panel view) 0)
        (update-main-content view)
        nil)
       ((and (key-event-char key) (char= (key-event-char key) #\2))
+       (setf (panel-focused (main-panel view)) nil)
        (setf (view-focused-panel view) 1)
        (update-main-content view)
        nil)
       ((and (key-event-char key) (char= (key-event-char key) #\3))
+       (setf (panel-focused (main-panel view)) nil)
        (setf (view-focused-panel view) 2)
        (update-main-content view)
        nil)
       ((and (key-event-char key) (char= (key-event-char key) #\4))
+       (setf (panel-focused (main-panel view)) nil)
        (setf (view-focused-panel view) 3)
        (update-main-content view)
        nil)
       ((and (key-event-char key) (char= (key-event-char key) #\5))
+       (setf (panel-focused (main-panel view)) nil)
        (setf (view-focused-panel view) 4)
        (update-main-content view)
+       nil)
+      ;; Focus main panel with 0 key for scrolling
+      ((and (key-event-char key) (char= (key-event-char key) #\0))
+       ;; Toggle main panel focus - if already focused, unfocus
+       (if (panel-focused (main-panel view))
+           (progn
+             (setf (panel-focused (main-panel view)) nil)
+             ;; Re-focus the left panel
+             (let ((p (nth focused-idx (view-panels view))))
+               (setf (panel-focused p) t)))
+           (progn
+             ;; Unfocus all left panels
+             (dolist (p (view-panels view))
+               (setf (panel-focused p) nil))
+             ;; Focus main panel
+             (setf (panel-focused (main-panel view)) t)))
        nil)
       ;; Stage/unstage with space (when on files panel)
       ((and (key-event-char key) (char= (key-event-char key) #\Space))
