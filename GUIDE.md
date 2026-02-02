@@ -121,8 +121,9 @@ Press `w` in the Files panel to cycle to Stashes view.
 |-----|--------|
 | `w` | Cycle to next view |
 | `Enter` | Apply selected stash (keep stash) |
-| `P` (capital) | Pop selected stash (apply and remove) |
+| `p` or `P` | Pop selected stash (apply and remove) |
 | `D` (capital) | Drop selected stash |
+| `0` | Focus main panel to scroll stash diff with j/k |
 
 ### Branches Panel `[3]`
 
@@ -172,6 +173,9 @@ Press `w` three times from Local branches to reach Submodules view.
 |-----|--------|
 | `/` | Search commits by message or author |
 | `t` | Create tag on selected commit |
+| `A` (capital) | Amend HEAD commit (with or without new message) |
+| `X` (capital) | Reset to commit (Soft/Mixed/Hard options) |
+| `F` (capital) | Create fixup! commit for autosquash |
 | `S` (capital) | Squash commits (select target commit) |
 | `C` (capital) | Cherry-pick selected commit |
 | `R` (capital) | Revert selected commit |
