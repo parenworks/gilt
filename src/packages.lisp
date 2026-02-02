@@ -304,7 +304,24 @@
            #:blame-line-num
            #:blame-line-content
            #:ensure-repo
-           #:*current-repo*))
+           #:*current-repo*
+           ;; Stash management
+           #:stash-entry
+           #:stash-index
+           #:stash-ref
+           #:stash-branch
+           #:stash-message
+           #:make-stash-entry
+           #:git-stash-list
+           #:git-stash-push
+           #:git-stash-push-staged
+           #:git-stash-push-include-untracked
+           #:git-stash-pop
+           #:git-stash-apply
+           #:git-stash-drop
+           #:git-stash-clear
+           #:git-stash-show
+           #:git-stash-branch))
 
 (defpackage #:gilt.pty
   (:use #:cl)

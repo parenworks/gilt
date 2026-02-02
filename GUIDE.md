@@ -95,15 +95,15 @@ Each commit line shows:
 | `c` | Open commit dialog |
 | `P` (capital) | Push to remote |
 | `p` (lowercase) | Pull from remote |
-| `w` | Toggle: Files ↔ Worktrees view |
+| `w` | Cycle: Files → Worktrees → Stashes |
 
 ### Worktrees View (in Files Panel)
 
-Press `w` in the Files panel to switch to Worktrees view.
+Press `w` in the Files panel to cycle to Worktrees view.
 
 | Key | Action |
 |-----|--------|
-| `w` | Toggle back to Files view |
+| `w` | Cycle to next view |
 | `A` (capital) | Add new worktree |
 | `D` (capital) | Remove selected worktree |
 
@@ -112,6 +112,17 @@ Worktrees are color-coded:
 - **Yellow** = Detached HEAD
 - **Red** = Locked worktree
 - **Gray** = Bare repository
+
+### Stashes View (in Files Panel)
+
+Press `w` in the Files panel to cycle to Stashes view.
+
+| Key | Action |
+|-----|--------|
+| `w` | Cycle to next view |
+| `Enter` | Apply selected stash (keep stash) |
+| `P` (capital) | Pop selected stash (apply and remove) |
+| `D` (capital) | Drop selected stash |
 
 ### Branches Panel `[3]`
 

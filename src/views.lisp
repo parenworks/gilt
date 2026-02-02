@@ -106,7 +106,9 @@
    (config-scope-filter :accessor config-scope-filter :initform nil)  ; nil=all, :local, :global, :system
    ;; Worktree list
    (worktree-list :accessor worktree-list :initform nil)
-   (show-worktrees :accessor show-worktrees :initform nil)))
+   (show-worktrees :accessor show-worktrees :initform nil)
+   ;; Stash view toggle (stash-list already exists above)
+   (show-stashes :accessor show-stashes :initform nil)))
 
 (defmethod initialize-instance :after ((view main-view) &key)
   ;; Create all panels
@@ -181,47 +183,66 @@
                                 (t "OPERATION IN PROGRESS"))))
                 (cdr (last items))))
         (setf (panel-items (status-panel view)) items))))
-  ;; Files panel - git status or worktrees based on toggle
+  ;; Files panel - git status, worktrees, or stashes based on toggle
   (let ((entries (git-status))
-        (worktrees (git-worktree-list)))
+        (worktrees (git-worktree-list))
+        (stashes (git-stash-list)))
     (setf (status-entries view) entries)
     (setf (worktree-list view) worktrees)
-    (if (show-worktrees view)
-        (progn
-          (setf (panel-title (files-panel view))
-                (numbered-title 2 "Worktrees" '("Files")))
-          (setf (panel-items (files-panel view))
-                (if worktrees
-                    (loop for wt in worktrees
-                          collect (let ((path (worktree-path wt))
-                                        (branch (worktree-branch wt))
-                                        (bare (worktree-bare wt))
-                                        (detached (worktree-detached wt))
-                                        (locked (worktree-locked wt)))
-                                    (cond
-                                      (bare
-                                       `(:multi-colored
-                                         (:bright-black ,(format nil "  ~A" path))
-                                         (:bright-black " (bare)")))
-                                      (detached
-                                       `(:multi-colored
-                                         (:yellow ,(format nil "  ~A" path))
-                                         (:bright-black " (detached)")))
-                                      (locked
-                                       `(:multi-colored
-                                         (:red ,(format nil "  ~A" path))
-                                         (:bright-black ,(format nil " [~A] (locked)" branch))))
-                                      (t
-                                       `(:multi-colored
-                                         (:green ,(format nil "  ~A" path))
-                                         (:bright-black ,(format nil " [~A]" branch)))))))
-                    (list (list :colored :bright-black "  No worktrees")))))
-        (progn
-          (setf (panel-title (files-panel view))
-                (numbered-title 2 "Files" '("Worktrees")))
-          (setf (panel-items (files-panel view))
-                (loop for e in entries
-                      collect (format-status-entry e))))))
+    (setf (stash-list view) stashes)
+    (cond
+      ;; Stashes view
+      ((show-stashes view)
+       (setf (panel-title (files-panel view))
+             (numbered-title 2 "Stashes" '("Files" "Worktrees")))
+       (setf (panel-items (files-panel view))
+             (if stashes
+                 (loop for st in stashes
+                       collect (let ((idx (stash-index st))
+                                     (branch (stash-branch st))
+                                     (msg (stash-message st)))
+                                 `(:multi-colored
+                                   (:cyan ,(format nil "  ~D: " idx))
+                                   (:bright-black ,(if branch (format nil "[~A] " branch) ""))
+                                   (:white ,(or msg "WIP")))))
+                 (list (list :colored :bright-black "  No stashes")))))
+      ;; Worktrees view
+      ((show-worktrees view)
+       (setf (panel-title (files-panel view))
+             (numbered-title 2 "Worktrees" '("Files" "Stashes")))
+       (setf (panel-items (files-panel view))
+             (if worktrees
+                 (loop for wt in worktrees
+                       collect (let ((path (worktree-path wt))
+                                     (branch (worktree-branch wt))
+                                     (bare (worktree-bare wt))
+                                     (detached (worktree-detached wt))
+                                     (locked (worktree-locked wt)))
+                                 (cond
+                                   (bare
+                                    `(:multi-colored
+                                      (:bright-black ,(format nil "  ~A" path))
+                                      (:bright-black " (bare)")))
+                                   (detached
+                                    `(:multi-colored
+                                      (:yellow ,(format nil "  ~A" path))
+                                      (:bright-black " (detached)")))
+                                   (locked
+                                    `(:multi-colored
+                                      (:red ,(format nil "  ~A" path))
+                                      (:bright-black ,(format nil " [~A] (locked)" branch))))
+                                   (t
+                                    `(:multi-colored
+                                      (:green ,(format nil "  ~A" path))
+                                      (:bright-black ,(format nil " [~A]" branch)))))))
+                 (list (list :colored :bright-black "  No worktrees")))))
+      ;; Files view (default)
+      (t
+       (setf (panel-title (files-panel view))
+             (numbered-title 2 "Files" '("Worktrees" "Stashes")))
+       (setf (panel-items (files-panel view))
+             (loop for e in entries
+                   collect (format-status-entry e))))))
   ;; Branches panel - local, remote, tags, or submodules based on toggle
   (let ((branches (git-branches))
         (remote-branches (git-remote-branches))
@@ -526,9 +547,11 @@
                        "   o          Resolve conflict: keep ours"
                        "   t          Resolve conflict: keep theirs"
                        "   X          Abort merge"
-                       "   w          Toggle: Files/Worktrees"
+                       "   w          Cycle: Files/Worktrees/Stashes"
                        "   A          Add worktree (in Worktrees view)"
-                       "   D          Remove worktree (in Worktrees view)"
+                       "   D          Remove worktree/Drop stash"
+                       "   P          Pop stash (in Stashes view)"
+                       "   Enter      Apply stash (in Stashes view)"
                        ""
                        " COMMITS (panel 4)"
                        "   /          Search commits"
@@ -1027,7 +1050,27 @@
                   ((string= selected-button "Force Remove")
                    (log-command view (format nil "git worktree remove --force ~A" path))
                    (git-worktree-remove path t)
-                   (refresh-data view)))))))
+                   (refresh-data view)))))
+             ;; Drop Stash dialog
+             ((string= (dialog-title dlg) "Drop Stash")
+              (let* ((idx (getf (dialog-data dlg) :stash-index))
+                     (buttons (dialog-buttons dlg))
+                     (selected-idx (dialog-selected-button dlg))
+                     (selected-button (nth selected-idx buttons)))
+                (when (string= selected-button "Drop")
+                  (log-command view (format nil "git stash drop stash@{~D}" idx))
+                  (git-stash-drop idx)
+                  (refresh-data view))))
+             ;; Pop Stash dialog
+             ((string= (dialog-title dlg) "Pop Stash")
+              (let* ((idx (getf (dialog-data dlg) :stash-index))
+                     (buttons (dialog-buttons dlg))
+                     (selected-idx (dialog-selected-button dlg))
+                     (selected-button (nth selected-idx buttons)))
+                (when (string= selected-button "Pop")
+                  (log-command view (format nil "git stash pop stash@{~D}" idx))
+                  (git-stash-pop idx)
+                  (refresh-data view))))))
          (setf (active-dialog view) nil))
         ((eq result :cancel)
          (setf (active-dialog view) nil))
@@ -1331,26 +1374,38 @@
                (refresh-data view)))))
        nil)
       ;; Enter on branches - checkout local or track remote
+      ;; Enter on stashes view - apply stash
       ((eq (key-event-code key) +key-enter+)
-       (when (= focused-idx 2)  ; Branches panel
-         (if (show-remote-branches view)
-             ;; Remote mode - track the remote branch
-             (let* ((branches (remote-branch-list view))
-                    (selected (panel-selected panel)))
-               (when (and branches (< selected (length branches)))
-                 (let ((branch (nth selected branches)))
-                   (log-command view (format nil "git checkout -b ... --track ~A" branch))
-                   (git-track-remote-branch branch)
-                   (setf (show-remote-branches view) nil)  ; Switch back to local
-                   (refresh-data view))))
-             ;; Local mode - checkout
-             (let* ((branches (branch-list view))
-                    (selected (panel-selected panel)))
-               (when (and branches (< selected (length branches)))
-                 (let ((branch (nth selected branches)))
-                   (log-command view (format nil "git checkout ~A" branch))
-                   (git-checkout branch)
-                   (refresh-data view))))))
+       (cond
+         ;; Stashes view - apply stash
+         ((and (= focused-idx 1) (show-stashes view))
+          (let* ((stashes (stash-list view))
+                 (selected (panel-selected (files-panel view))))
+            (when (and stashes (< selected (length stashes)))
+              (let ((st (nth selected stashes)))
+                (log-command view (format nil "git stash apply stash@{~D}" (stash-index st)))
+                (git-stash-apply (stash-index st))
+                (refresh-data view)))))
+         ;; Branches panel
+         ((= focused-idx 2)
+          (if (show-remote-branches view)
+              ;; Remote mode - track the remote branch
+              (let* ((branches (remote-branch-list view))
+                     (selected (panel-selected panel)))
+                (when (and branches (< selected (length branches)))
+                  (let ((branch (nth selected branches)))
+                    (log-command view (format nil "git checkout -b ... --track ~A" branch))
+                    (git-track-remote-branch branch)
+                    (setf (show-remote-branches view) nil)  ; Switch back to local
+                    (refresh-data view))))
+              ;; Local mode - checkout
+              (let* ((branches (branch-list view))
+                     (selected (panel-selected panel)))
+                (when (and branches (< selected (length branches)))
+                  (let ((branch (nth selected branches)))
+                    (log-command view (format nil "git checkout ~A" branch))
+                    (git-checkout branch)
+                    (refresh-data view)))))))
        nil)
       ;; Refresh
       ((and (key-event-char key) (char= (key-event-char key) #\r))
@@ -1402,15 +1457,17 @@
                           :multiline t
                           :buttons '("Commit" "Cancel")))
        nil)
-      ;; Push - 'P' (capital) opens push confirmation
-      ((and (key-event-char key) (char= (key-event-char key) #\P))
+      ;; Push - 'P' (capital) opens push confirmation (not in stashes view)
+      ((and (key-event-char key) (char= (key-event-char key) #\P)
+            (not (and (= focused-idx 1) (show-stashes view))))
        (setf (active-dialog view)
              (make-dialog :title "Push"
                           :message "Push to origin?"
                           :buttons '("Push" "Cancel")))
        nil)
-      ;; Pull - 'p' (lowercase) opens pull confirmation
-      ((and (key-event-char key) (char= (key-event-char key) #\p))
+      ;; Pull - 'p' (lowercase) opens pull confirmation (not in stashes view)
+      ((and (key-event-char key) (char= (key-event-char key) #\p)
+            (not (and (= focused-idx 1) (show-stashes view))))
        (setf (active-dialog view)
              (make-dialog :title "Pull"
                           :message "Pull from origin?"
@@ -1538,26 +1595,71 @@
                             :buttons '("Add" "New Branch" "Cancel"))))
        nil)
       ;; Remove worktree - 'D' (capital, when on files panel in worktrees view)
+      ;; Drop stash - 'D' (capital, when on files panel in stashes view)
       ((and (key-event-char key) (char= (key-event-char key) #\D))
-       (when (and (= focused-idx 1) (show-worktrees view))
-         (let* ((worktrees (worktree-list view))
-                (selected (panel-selected (files-panel view))))
-           (when (and worktrees (< selected (length worktrees)))
-             (let ((wt (nth selected worktrees)))
-               ;; Don't allow removing the main worktree (first one, usually bare or main)
-               (when (> selected 0)
-                 (setf (active-dialog view)
-                       (make-dialog :title "Remove Worktree"
-                                    :message (format nil "Remove worktree at ~A?" (worktree-path wt))
-                                    :data (list :worktree-path (worktree-path wt))
-                                    :buttons '("Remove" "Force Remove" "Cancel"))))))))
+       (cond
+         ;; Worktrees view
+         ((and (= focused-idx 1) (show-worktrees view))
+          (let* ((worktrees (worktree-list view))
+                 (selected (panel-selected (files-panel view))))
+            (when (and worktrees (< selected (length worktrees)))
+              (let ((wt (nth selected worktrees)))
+                ;; Don't allow removing the main worktree (first one, usually bare or main)
+                (when (> selected 0)
+                  (setf (active-dialog view)
+                        (make-dialog :title "Remove Worktree"
+                                     :message (format nil "Remove worktree at ~A?" (worktree-path wt))
+                                     :data (list :worktree-path (worktree-path wt))
+                                     :buttons '("Remove" "Force Remove" "Cancel"))))))))
+         ;; Stashes view - drop stash
+         ((and (= focused-idx 1) (show-stashes view))
+          (let* ((stashes (stash-list view))
+                 (selected (panel-selected (files-panel view))))
+            (when (and stashes (< selected (length stashes)))
+              (let ((st (nth selected stashes)))
+                (setf (active-dialog view)
+                      (make-dialog :title "Drop Stash"
+                                   :message (format nil "Drop stash ~D: ~A?"
+                                                    (stash-index st)
+                                                    (or (stash-message st) "WIP"))
+                                   :data (list :stash-index (stash-index st))
+                                   :buttons '("Drop" "Cancel"))))))))
        nil)
+      ;; Pop stash - 'P' or 'p' (when on files panel in stashes view)
+      ((and (key-event-char key)
+            (or (char= (key-event-char key) #\P) (char= (key-event-char key) #\p))
+            (= focused-idx 1) (show-stashes view))
+       (let* ((stashes (stash-list view))
+              (selected (panel-selected (files-panel view))))
+         (when (and stashes (< selected (length stashes)))
+           (let ((st (nth selected stashes)))
+             (setf (active-dialog view)
+                   (make-dialog :title "Pop Stash"
+                                :message (format nil "Pop stash ~D: ~A? (apply and remove)"
+                                                 (stash-index st)
+                                                 (or (stash-message st) "WIP"))
+                                :data (list :stash-index (stash-index st))
+                                :buttons '("Pop" "Cancel"))))))
+       nil)
+      ;; Apply stash - 'Enter' (when on files panel in stashes view)
+      ;; Note: This is handled in the existing Enter key handler below
       ;; Toggle views - 'w' (when on files or branches panel)
       ((and (key-event-char key) (char= (key-event-char key) #\w))
        (cond
-         ;; Files panel - toggle Files/Worktrees
+         ;; Files panel - cycle Files -> Worktrees -> Stashes -> Files
          ((= focused-idx 1)
-          (setf (show-worktrees view) (not (show-worktrees view)))
+          (cond
+            ((show-stashes view)
+             ;; Stashes -> Files
+             (setf (show-stashes view) nil)
+             (setf (show-worktrees view) nil))
+            ((show-worktrees view)
+             ;; Worktrees -> Stashes
+             (setf (show-worktrees view) nil)
+             (setf (show-stashes view) t))
+            (t
+             ;; Files -> Worktrees
+             (setf (show-worktrees view) t)))
           (setf (panel-selected (files-panel view)) 0)
           (refresh-data view))
          ;; Branches panel - cycle Local -> Remotes -> Tags -> Submodules -> Local

@@ -907,3 +907,83 @@
 (defun git-worktree-prune ()
   "Prune stale worktree information."
   (git-run "worktree" "prune"))
+
+;;; Stash management
+
+(defclass stash-entry ()
+  ((index :initarg :index :accessor stash-index :initform 0)
+   (ref :initarg :ref :accessor stash-ref :initform nil)
+   (branch :initarg :branch :accessor stash-branch :initform nil)
+   (message :initarg :message :accessor stash-message :initform nil))
+  (:documentation "Represents a git stash entry"))
+
+(defun make-stash-entry (&key index ref branch message)
+  (make-instance 'stash-entry :index index :ref ref :branch branch :message message))
+
+(defun git-stash-list ()
+  "Get list of stash-entry objects."
+  (let ((lines (git-run-lines "stash" "list" "--format=%gd|%gs")))
+    (loop for line in lines
+          for i from 0
+          when (> (length line) 0)
+          collect (let* ((parts (cl-ppcre:split "\\|" line :limit 2))
+                         (ref (first parts))
+                         (desc (second parts)))
+                    ;; desc is like "WIP on master: abc123 message" or "On master: message"
+                    (let ((branch nil)
+                          (message desc))
+                      (when (cl-ppcre:scan "^(?:WIP )?[Oo]n ([^:]+):" desc)
+                        (cl-ppcre:register-groups-bind (b) ("^(?:WIP )?[Oo]n ([^:]+):" desc)
+                          (setf branch b))
+                        (setf message (cl-ppcre:regex-replace "^(?:WIP )?[Oo]n [^:]+:\\s*" desc "")))
+                      (make-stash-entry :index i :ref ref :branch branch :message message))))))
+
+(defun git-stash-push (&optional message)
+  "Stash current changes with optional message."
+  (if message
+      (git-run "stash" "push" "-m" message)
+      (git-run "stash" "push")))
+
+(defun git-stash-push-staged (&optional message)
+  "Stash only staged changes."
+  (if message
+      (git-run "stash" "push" "--staged" "-m" message)
+      (git-run "stash" "push" "--staged")))
+
+(defun git-stash-push-include-untracked (&optional message)
+  "Stash changes including untracked files."
+  (if message
+      (git-run "stash" "push" "--include-untracked" "-m" message)
+      (git-run "stash" "push" "--include-untracked")))
+
+(defun git-stash-pop (&optional index)
+  "Pop stash at INDEX (default 0)."
+  (if index
+      (git-run "stash" "pop" (format nil "stash@{~D}" index))
+      (git-run "stash" "pop")))
+
+(defun git-stash-apply (&optional index)
+  "Apply stash at INDEX without removing it."
+  (if index
+      (git-run "stash" "apply" (format nil "stash@{~D}" index))
+      (git-run "stash" "apply")))
+
+(defun git-stash-drop (&optional index)
+  "Drop stash at INDEX."
+  (if index
+      (git-run "stash" "drop" (format nil "stash@{~D}" index))
+      (git-run "stash" "drop")))
+
+(defun git-stash-clear ()
+  "Clear all stashes."
+  (git-run "stash" "clear"))
+
+(defun git-stash-show (index)
+  "Get diff for stash at INDEX."
+  (git-run-output "stash" "show" "-p" (format nil "stash@{~D}" index)))
+
+(defun git-stash-branch (branch-name &optional index)
+  "Create a branch from stash at INDEX."
+  (if index
+      (git-run "stash" "branch" branch-name (format nil "stash@{~D}" index))
+      (git-run "stash" "branch" branch-name)))
