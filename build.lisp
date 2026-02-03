@@ -17,7 +17,9 @@
 
 ;; Build the executable
 ;; Use maximum compression (1-9, where 9 is highest)
+;; Suppress SBCL runtime options banner
 (sb-ext:save-lisp-and-die "gilt"
                           :toplevel #'gilt:main
                           :executable t
-                          :compression 9)
+                          :compression 9
+                          :save-runtime-options t)

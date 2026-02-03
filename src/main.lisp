@@ -8,7 +8,7 @@
 ;;; - MAJOR: incompatible API changes
 ;;; - MINOR: new functionality (backwards compatible)
 ;;; - PATCH: bug fixes (backwards compatible)
-(defparameter *version* "0.1.0"
+(defparameter *version* "0.11.0"
   "Gilt version number")
 
 ;;; Application class - encapsulates all application state
@@ -166,7 +166,8 @@
       ;; Version flag
       ((or (member "--version" args :test #'string=)
            (member "-v" args :test #'string=))
-       (format t "gilt ~A~%" *version*)
+       (format t "gilt version ~A~%" *version*)
+       (finish-output)
        (sb-ext:exit :code 0))
       ;; Debug flag - run diagnostics
       ((member "--debug" args :test #'string=)
