@@ -157,7 +157,12 @@
           (open (reader-tty-path reader)
                 :direction :input
                 :element-type '(unsigned-byte 8)
-                :if-does-not-exist :error)))
+                :if-does-not-exist :error))
+    ;; Set non-blocking mode on the file descriptor
+    (let ((fd (sb-sys:fd-stream-fd (reader-stream reader))))
+      (sb-posix:fcntl fd sb-posix:f-setfl 
+                      (logior (sb-posix:fcntl fd sb-posix:f-getfl)
+                              sb-posix:o-nonblock))))
   reader)
 
 (defmethod reader-close ((reader input-reader))
@@ -167,16 +172,19 @@
   reader)
 
 (defun read-byte-nonblocking (stream)
-  "Try to read a byte without blocking. Returns byte or nil."
-  (when (listen stream)
-    (read-byte stream nil nil)))
+  "Try to read a byte without blocking. Returns byte or nil.
+   With O_NONBLOCK set, read-byte returns nil if no data available."
+  (handler-case
+      (read-byte stream nil nil)
+    ;; Handle EAGAIN/EWOULDBLOCK which can happen with non-blocking I/O
+    (sb-int:simple-stream-error () nil)))
 
 (defmethod read-key-event ((reader input-reader))
   "Read a key event from the TTY"
   (let* ((stream (reader-stream reader))
-         (byte (read-byte stream nil nil)))
+         (byte (read-byte-nonblocking stream)))
     (unless byte
-      (return-from read-key-event (make-key-event :char #\q)))
+      (return-from read-key-event nil))
     (cond
       ;; Escape sequence or bare escape
       ((= byte 27)
@@ -242,20 +250,23 @@
   (reader-close *input-reader*))
 
 (defun read-key ()
-  "Read a key event from terminal. Blocks until key pressed."
+  "Read a key event from terminal. Polls until key pressed."
   (reader-open *input-reader*)
-  (read-key-event *input-reader*))
+  ;; Poll with small sleep since we use non-blocking I/O
+  (loop
+    (let ((key (read-key-event *input-reader*)))
+      (when key (return key)))
+    (sleep 0.01)))
 
 (defun read-key-with-timeout (timeout-ms)
   "Try to read a key event with timeout. Returns key-event or nil if timeout."
   (reader-open *input-reader*)
-  (let ((stream (reader-stream *input-reader*))
-        (start-time (get-internal-real-time))
+  (let ((start-time (get-internal-real-time))
         (timeout-ticks (* timeout-ms (/ internal-time-units-per-second 1000))))
     ;; Poll for input with timeout
     (loop
-      (when (listen stream)
-        (return (read-key-event *input-reader*)))
+      (let ((key (read-key-event *input-reader*)))
+        (when key (return key)))
       (when (> (- (get-internal-real-time) start-time) timeout-ticks)
         (return nil))
       (sleep 0.01))))

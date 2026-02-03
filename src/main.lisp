@@ -206,14 +206,22 @@
              (sb-ext:run-program "/bin/stty" '("-echo" "raw" "-icanon")
                                  :input t :output nil :error nil)
              (let* ((tty (open "/dev/tty" :direction :input :element-type '(unsigned-byte 8)))
+                    (fd (sb-sys:fd-stream-fd tty))
                     (start (get-internal-real-time))
                     (timeout (* 3 internal-time-units-per-second))
                     (got-input nil))
+               ;; Set non-blocking mode
+               (sb-posix:fcntl fd sb-posix:f-setfl 
+                               (logior (sb-posix:fcntl fd sb-posix:f-getfl)
+                                       sb-posix:o-nonblock))
                (loop while (< (- (get-internal-real-time) start) timeout)
-                     do (when (listen tty)
-                          (read-byte tty)
-                          (setf got-input t)
-                          (return)))
+                     do (handler-case
+                            (let ((byte (read-byte tty nil nil)))
+                              (when byte
+                                (setf got-input t)
+                                (return)))
+                          (sb-int:simple-stream-error () nil))
+                        (sleep 0.01))
                (close tty)
                (sb-ext:run-program "/bin/stty" '("echo" "-raw" "icanon")
                                    :input t :output nil :error nil)
