@@ -72,48 +72,56 @@
            #:with-style))
 
 (defpackage #:gilt.terminal
-  (:use #:cl #:gilt.ansi)
-  (:export ;; Key event class and accessors
-           #:key-event
-           #:make-key-event
-           #:key-event-char
-           #:key-event-code
-           #:key-event-ctrl-p
-           #:key-event-alt-p
-           ;; Terminal mode class
-           #:terminal-mode
-           #:terminal-raw-p
-           #:enable-raw-mode
-           #:disable-raw-mode
-           #:query-size
-           #:*terminal-mode*
-           ;; Input reader class
-           #:input-reader
-           #:reader-stream
-           #:read-key-event
-           #:read-byte-with-timeout
-           #:*input-reader*
-           ;; Convenience functions
-           #:with-raw-terminal
-           #:terminal-size
-           #:read-key
-           #:read-key-with-timeout
-           #:setup-terminal
-           #:restore-terminal
-           ;; Key constants
-           #:+key-up+
-           #:+key-down+
-           #:+key-left+
-           #:+key-right+
-           #:+key-enter+
-           #:+key-escape+
-           #:+key-tab+
-           #:+key-backspace+
-           #:+key-delete+
-           #:+key-home+
-           #:+key-end+
-           #:+key-page-up+
-           #:+key-page-down+))
+   (:use #:cl #:gilt.ansi)
+   (:export ;; Key event class and accessors
+            #:key-event
+            #:make-key-event
+            #:key-event-char
+            #:key-event-code
+            #:key-event-ctrl-p
+            #:key-event-alt-p
+            ;; Terminal mode class
+            #:terminal-mode
+            #:terminal-raw-p
+            #:enable-raw-mode
+            #:disable-raw-mode
+            #:query-size
+            #:*terminal-mode*
+            ;; Cross-platform utility functions
+            #:find-stty
+            #:find-tty
+            #:detect-terminal-type
+            #:wait-for-escape-sequence
+            #:*stty-path*
+            #:*tty-path*
+            #:*escape-timeout*
+            ;; Input reader class
+            #:input-reader
+            #:reader-stream
+            #:read-key-event
+            #:read-byte-with-timeout
+            #:*input-reader*
+            ;; Convenience functions
+            #:with-raw-terminal
+            #:terminal-size
+            #:read-key
+            #:read-key-with-timeout
+            #:setup-terminal
+            #:restore-terminal
+            ;; Key constants
+            #:+key-up+
+            #:+key-down+
+            #:+key-left+
+            #:+key-right+
+            #:+key-enter+
+            #:+key-escape+
+            #:+key-tab+
+            #:+key-backspace+
+            #:+key-delete+
+            #:+key-home+
+            #:+key-end+
+            #:+key-page-up+
+            #:+key-page-down+))
 
 (defpackage #:gilt.ui
   (:use #:cl #:gilt.ansi #:gilt.terminal)
