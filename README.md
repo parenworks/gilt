@@ -21,6 +21,7 @@ A LazyGit-style Git TUI written in Common Lisp.
 - **Stash management** - List, apply, pop, and drop stashes
 - **Config viewer** - Browse git config (local/global/system)
 - **Status bar** - Branch tracking info and operation status
+- **Cross-platform Unix support** - Works on NixOS, standard Linux, macOS, WSL2
 
 ## Requirements
 
@@ -73,6 +74,8 @@ See **[GUIDE.md](GUIDE.md)** for the complete user guide including:
 - Troubleshooting tips
 
 See **[CHANGELOG.md](CHANGELOG.md)** for version history.
+
+See **[NIXOS_SUPPORT.md](NIXOS_SUPPORT.md)** for cross-platform Unix support and troubleshooting.
 
 ## Architecture
 

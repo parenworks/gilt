@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-02-04
+
+### Added
+
+- **Cross-Platform Unix Support**
+  - NixOS compatibility - Auto-detects stty at `/run/current-system/sw/bin/stty`
+  - Dynamic path resolution for stty command across different Unix systems
+  - Dynamic TTY device detection (`/dev/tty`, `/dev/pts/0`, etc.)
+  - Terminal emulator detection with optimized settings for Alacritty
+  - Configurable via environment variables: `GILT_STTY_PATH`, `GILT_TTY_PATH`, `GILT_ESCAPE_TIMEOUT`
+
+### Fixed
+
+- **Keyboard Input Freeze** - Fixed freeze when pressing keys on NixOS/Alacritty
+  - Use `O_NONBLOCK` on TTY file descriptor for non-blocking I/O
+  - Replaced blocking read with polling loop
+  - Adaptive escape sequence timeout based on terminal type
+
+### Documentation
+
+- Added `NIXOS_SUPPORT.md` with cross-platform troubleshooting guide
+- Updated `diagnose.lisp` with comprehensive system detection tests
+
 ## [0.11.0] - 2026-02-02
 
 ### Added
@@ -93,7 +116,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Branch tracking info (ahead/behind upstream)
   - Repository state indicator (MERGING, REBASING, etc.)
 
-[Unreleased]: https://github.com/parenworks/gilt/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/parenworks/gilt/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/parenworks/gilt/releases/tag/v0.12.0
 [0.11.0]: https://github.com/parenworks/gilt/releases/tag/v0.11.0
 [0.10.0]: https://github.com/parenworks/gilt/releases/tag/v0.10.0
 [0.1.0]: https://github.com/parenworks/gilt/releases/tag/v0.1.0

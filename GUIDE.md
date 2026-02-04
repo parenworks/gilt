@@ -393,6 +393,40 @@ When a merge results in conflicts, conflicted files appear with a **red `!`** in
 
 ---
 
+## Cross-Platform Support
+
+Gilt works on various Unix systems including NixOS, standard Linux distributions, macOS, and WSL2.
+
+### Environment Variables
+
+If automatic detection fails, you can configure gilt manually:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `GILT_STTY_PATH` | Path to stty command | `/run/current-system/sw/bin/stty` |
+| `GILT_TTY_PATH` | Path to TTY device | `/dev/pts/1` |
+| `GILT_ESCAPE_TIMEOUT` | Escape sequence timeout (seconds) | `0.01` |
+
+### NixOS Users
+
+Gilt automatically detects NixOS and uses the correct stty path. No configuration needed.
+
+### Alacritty Users
+
+Gilt detects Alacritty via `ALACRITTY_SOCKET` and optimizes escape sequence timing automatically.
+
+### Diagnostics
+
+Run the diagnostic script to test system compatibility:
+
+```bash
+sbcl --load diagnose.lisp
+```
+
+See **[NIXOS_SUPPORT.md](NIXOS_SUPPORT.md)** for detailed cross-platform troubleshooting.
+
+---
+
 ## Tips and Tricks
 
 1. **Quick panel switching** - Use number keys `1-5` to jump directly to a panel
