@@ -1,0 +1,46 @@
+name: Release based on tag
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install SBCL
+        run: sudo apt-get update && sudo apt-get install -y sbcl make
+
+      - name: Install Quicklisp
+        run: |
+          curl -O https://beta.quicklisp.org/quicklisp.lisp
+          sbcl --non-interactive \
+               --load quicklisp.lisp \
+               --eval '(quicklisp-quickstart:install)' \
+               --eval '(quit)'
+
+      - name: Build binary
+        run: make build
+
+      - name: Verify binary
+        run: |
+          test -f gilt
+          chmod +x gilt
+          ./gilt --version
+
+      - name: Package binary
+        run: tar -czvf gilt-${{ github.ref_name }}-linux-x86_64.tar.gz gilt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: gilt-${{ github.ref_name }}-linux-x86_64.tar.gz
