@@ -1750,11 +1750,10 @@
                             :input-mode t
                             :buttons '("Add" "New Branch" "Cancel"))))
        nil)
-      ;; Remove worktree - 'D' (capital, when on files panel in worktrees view)
-      ;; Drop stash - 'D' (capital, when on files panel in stashes view)
+      ;; Delete / Remove / Drop - 'D' (capital)
       ((and (key-event-char key) (char= (key-event-char key) #\D))
        (cond
-         ;; Worktrees view
+         ;; Files panel: worktrees view - remove worktree
          ((and (= focused-idx 1) (show-worktrees view))
           (let* ((worktrees (worktree-list view))
                  (selected (panel-selected (files-panel view))))
@@ -1767,7 +1766,7 @@
                                      :message (format nil "Remove worktree at ~A?" (worktree-path wt))
                                      :data (list :worktree-path (worktree-path wt))
                                      :buttons '("Remove" "Force Remove" "Cancel"))))))))
-         ;; Stashes view - drop stash
+         ;; Files panel: stashes view - drop stash
          ((and (= focused-idx 1) (show-stashes view))
           (let* ((stashes (stash-list view))
                  (selected (panel-selected (files-panel view))))
@@ -1779,7 +1778,40 @@
                                                     (stash-index st)
                                                     (or (stash-message st) "WIP"))
                                    :data (list :stash-index (stash-index st))
-                                   :buttons '("Drop" "Cancel"))))))))
+                                   :buttons '("Drop" "Cancel")))))))
+         ;; Branches panel: delete tag
+         ((and (= focused-idx 2) (show-tags view))
+          (let* ((tags (tag-list view))
+                 (selected (panel-selected panel)))
+            (when (and tags (< selected (length tags)))
+              (let ((tag (nth selected tags)))
+                (setf (active-dialog view)
+                      (make-dialog :title "Delete Tag"
+                                   :message (format nil "Delete tag ~A?" (tag-name tag))
+                                   :data (list :tag-name (tag-name tag))
+                                   :buttons '("Delete" "Cancel")))))))
+         ;; Branches panel: delete remote branch
+         ((and (= focused-idx 2) (show-remote-branches view))
+          (let* ((remote-branches (remote-branch-list view))
+                 (selected (panel-selected panel)))
+            (when (and remote-branches (< selected (length remote-branches)))
+              (let ((remote-branch (nth selected remote-branches)))
+                (setf (active-dialog view)
+                      (make-dialog :title "Delete Remote Branch"
+                                   :message (format nil "Delete remote branch ~A?" remote-branch)
+                                   :data (list :remote-branch remote-branch)
+                                   :buttons '("Delete" "Cancel")))))))
+         ;; Branches panel: delete local branch
+         ((= focused-idx 2)
+          (let* ((branches (branch-list view))
+                 (selected (panel-selected panel)))
+            (when (and branches (< selected (length branches)))
+              (let ((branch (nth selected branches)))
+                (unless (string= branch (current-branch view))
+                  (setf (active-dialog view)
+                        (make-dialog :title "Delete Branch"
+                                     :message (format nil "Delete branch ~A?" branch)
+                                     :buttons '("Delete" "Cancel")))))))))
        nil)
       ;; Pop stash - 'P' or 'p' (when on files panel in stashes view)
       ((and (key-event-char key)
@@ -1852,44 +1884,6 @@
                  ;; Store branch name for later use
                  (setf (dialog-message (active-dialog view))
                        (format nil "~A|~A" branch (current-branch view))))))))
-       nil)
-      ;; Delete branch, tag, or remote - 'D' (capital, when on branches panel)
-      ((and (key-event-char key) (char= (key-event-char key) #\D))
-       (when (= focused-idx 2)  ; Branches panel
-         (cond
-           ;; Delete tag
-           ((show-tags view)
-            (let* ((tags (tag-list view))
-                   (selected (panel-selected panel)))
-              (when (and tags (< selected (length tags)))
-                (let ((tag (nth selected tags)))
-                  (setf (active-dialog view)
-                        (make-dialog :title "Delete Tag"
-                                     :message (format nil "Delete tag ~A?" (tag-name tag))
-                                     :data (list :tag-name (tag-name tag))
-                                     :buttons '("Delete" "Cancel")))))))
-           ;; Delete remote branch (when in remotes view)
-           ((show-remote-branches view)
-            (let* ((remote-branches (remote-branch-list view))
-                   (selected (panel-selected panel)))
-              (when (and remote-branches (< selected (length remote-branches)))
-                (let ((remote-branch (nth selected remote-branches)))
-                  (setf (active-dialog view)
-                        (make-dialog :title "Delete Remote Branch"
-                                     :message (format nil "Delete remote branch ~A?" remote-branch)
-                                     :data (list :remote-branch remote-branch)
-                                     :buttons '("Delete" "Cancel")))))))
-           ;; Delete branch
-           (t
-            (let* ((branches (branch-list view))
-                   (selected (panel-selected panel)))
-              (when (and branches (< selected (length branches)))
-                (let ((branch (nth selected branches)))
-                  (unless (string= branch (current-branch view))
-                    (setf (active-dialog view)
-                          (make-dialog :title "Delete Branch"
-                                       :message (format nil "Delete branch ~A?" branch)
-                                       :buttons '("Delete" "Cancel"))))))))))
        nil)
       ;; Update submodule - 'U' (capital, when on branches panel in submodules view)
       ((and (key-event-char key) (char= (key-event-char key) #\U))
