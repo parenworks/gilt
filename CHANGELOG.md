@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **D key not working on branches panel** — Duplicate key handler made branch/tag/remote deletion unreachable; merged into single dispatcher
+
 ## [0.13.0] - 2026-02-07
 
 ### Changed
