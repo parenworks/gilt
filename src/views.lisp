@@ -511,8 +511,8 @@
      '(("j/k" . "navigate") ("Space" . "stage/unstage") ("e" . "edit/hunks") ("d" . "discard")
        ("c" . "commit") ("r" . "refresh") ("q" . "quit")))
     (2 ; Branches panel
-     '(("j/k" . "navigate") ("Enter" . "checkout/track") ("n" . "new") ("f" . "fetch")
-       ("w" . "local/remote") ("M" . "merge") ("R" . "rebase") ("D" . "delete") ("r" . "refresh") ("q" . "quit")))
+     '(("j/k" . "navigate") ("Enter" . "checkout/track") ("n" . "new") ("N" . "rename")
+       ("w" . "local/remote") ("M" . "merge") ("R" . "rebase") ("F" . "ff") ("D" . "delete") ("r" . "refresh") ("q" . "quit")))
     (3 ; Commits panel
      '(("j/k" . "navigate") ("i" . "rebase") ("S" . "squash") ("C" . "cherry-pick") ("R" . "revert") ("r" . "refresh") ("q" . "quit")))
     (4 ; Stash panel
@@ -663,13 +663,16 @@
                        ""
                        " BRANCHES (panel 3)"
                        "   n          New branch"
+                       "   N          Rename branch"
                        "   Enter      Checkout branch"
                        "   M          Merge branch into current"
                        "   R          Rebase current onto branch"
+                       "   F          Fast-forward branch to upstream"
                        "   D          Delete branch/tag/remote branch"
                        "   C          Cherry-pick from branch"
                        "   w          Cycle: Local/Remotes/Tags/Submodules"
                        "   t          Create tag (in Tags view)"
+                       "   T          Push tag to remote (in Tags view)"
                        "   f          Fetch (select remote)"
                        "   A          Add remote (in Remotes view)"
                        "   R          Rename remote (in Remotes view)"
@@ -687,6 +690,7 @@
                        "   s          Stash changes"
                        "   g          Pop stash"
                        "   Enter      Apply stash"
+                       "   B          New branch from stash (in Stashes view)"
                        ""
                        " OTHER"
                        "   r          Refresh all panels"
@@ -1231,6 +1235,45 @@
                 (when (string= selected-button "Pop")
                   (log-command view (format nil "git stash pop stash@{~D}" idx))
                   (git-stash-pop idx)
+                  (refresh-data view))))
+             ;; Rename Branch dialog
+             ((string= (dialog-title dlg) "Rename Branch")
+              (let ((old-name (getf (dialog-data dlg) :old-name))
+                    (new-name (first (dialog-input-lines dlg))))
+                (when (and old-name new-name (> (length new-name) 0))
+                  (log-command view (format nil "git branch -m ~A ~A" old-name new-name))
+                  (git-rename-branch old-name new-name)
+                  (refresh-data view))))
+             ;; Fast-Forward Branch dialog
+             ((string= (dialog-title dlg) "Fast-Forward Branch")
+              (let ((branch (getf (dialog-data dlg) :branch)))
+                (when branch
+                  (log-command view (format nil "git fetch origin ~A:~A" branch branch))
+                  (git-fast-forward branch)
+                  (refresh-data view))))
+             ;; Push Tag dialog
+             ((string= (dialog-title dlg) "Push Tag")
+              (let* ((tag-name (getf (dialog-data dlg) :tag-name))
+                     (buttons (dialog-buttons dlg))
+                     (selected-idx (dialog-selected-button dlg))
+                     (selected-button (nth selected-idx buttons)))
+                (cond
+                  ((string= selected-button "Push")
+                   (when tag-name
+                     (log-command view (format nil "git push origin ~A" tag-name))
+                     (git-push-tag tag-name)
+                     (refresh-data view)))
+                  ((string= selected-button "Push All")
+                   (log-command view "git push origin --tags")
+                   (git-push-all-tags)
+                   (refresh-data view)))))
+             ;; Branch from Stash dialog
+             ((string= (dialog-title dlg) "Branch from Stash")
+              (let ((branch-name (first (dialog-input-lines dlg)))
+                    (idx (getf (dialog-data dlg) :stash-index)))
+                (when (and branch-name (> (length branch-name) 0))
+                  (log-command view (format nil "git stash branch ~A stash@{~D}" branch-name idx))
+                  (git-stash-branch branch-name idx)
                   (refresh-data view))))
              ;; Reword Commit dialog (in rebase mode)
              ((string= (dialog-title dlg) "Reword Commit")
@@ -1784,10 +1827,17 @@
                           :message "Pull from origin?"
                           :buttons '("Pull" "Cancel")))
        nil)
-      ;; Stage all - 'a'
+      ;; Stage all / unstage all toggle - 'a'
       ((and (key-event-char key) (char= (key-event-char key) #\a))
-       (log-command view "git add -A")
-       (git-stage-all)
+       (let* ((entries (status-entries view))
+              (all-staged (and entries (every #'status-entry-staged-p entries))))
+         (if all-staged
+             (progn
+               (log-command view "git reset HEAD")
+               (git-unstage-all))
+             (progn
+               (log-command view "git add -A")
+               (git-stage-all))))
        (refresh-data view)
        nil)
       ;; Stash - 's' (when on stash panel or files panel)
@@ -1848,6 +1898,33 @@
                 (make-dialog :title "Create Tag"
                              :input-mode t
                              :buttons '("Create" "Cancel")))))
+       nil)
+      ;; Push tag - 'T' (capital, when on branches panel in tags view)
+      ((and (key-event-char key) (char= (key-event-char key) #\T))
+       (when (and (= focused-idx 2) (show-tags view))
+         (let* ((tags (tag-list view))
+                (selected (panel-selected panel)))
+           (when (and tags (< selected (length tags)))
+             (let ((tag (nth selected tags)))
+               (setf (active-dialog view)
+                     (make-dialog :title "Push Tag"
+                                  :message (format nil "Push tag '~A' to origin?" (tag-name tag))
+                                  :data (list :tag-name (tag-name tag))
+                                  :buttons '("Push" "Push All" "Cancel")))))))
+       nil)
+      ;; New branch from stash - 'B' (capital, when on files panel in stashes view)
+      ((and (key-event-char key) (char= (key-event-char key) #\B))
+       (when (and (= focused-idx 1) (show-stashes view))
+         (let* ((stashes (stash-list view))
+                (selected (panel-selected panel)))
+           (when (and stashes (< selected (length stashes)))
+             (let ((st (nth selected stashes)))
+               (setf (active-dialog view)
+                     (make-dialog :title "Branch from Stash"
+                                  :message (format nil "Create branch from stash@{~D}:" (stash-index st))
+                                  :input-mode t
+                                  :data (list :stash-index (stash-index st))
+                                  :buttons '("Create" "Cancel")))))))
        nil)
       ;; Abort merge - 'X' (capital, when on files panel)
       ((and (key-event-char key) (char= (key-event-char key) #\X))
@@ -2039,6 +2116,36 @@
                  ;; Store branch name for later use
                  (setf (dialog-message (active-dialog view))
                        (format nil "~A|~A" branch (current-branch view))))))))
+       nil)
+      ;; Rename branch - 'N' (capital, when on branches panel, local view)
+      ((and (key-event-char key) (char= (key-event-char key) #\N))
+       (when (and (= focused-idx 2) (not (show-remote-branches view))
+                  (not (show-tags view)) (not (show-submodules view)))
+         (let* ((branches (branch-list view))
+                (selected (panel-selected panel)))
+           (when (and branches (< selected (length branches)))
+             (let ((branch (nth selected branches)))
+               (setf (active-dialog view)
+                     (make-dialog :title "Rename Branch"
+                                  :message (format nil "Rename '~A' to:" branch)
+                                  :input-mode t
+                                  :data (list :old-name branch)
+                                  :buttons '("Rename" "Cancel")))))))
+       nil)
+      ;; Fast-forward branch - 'F' (capital, when on branches panel, local view)
+      ((and (key-event-char key) (char= (key-event-char key) #\F))
+       (when (and (= focused-idx 2) (not (show-remote-branches view))
+                  (not (show-tags view)) (not (show-submodules view)))
+         (let* ((branches (branch-list view))
+                (selected (panel-selected panel)))
+           (when (and branches (< selected (length branches)))
+             (let ((branch (nth selected branches)))
+               (unless (string= branch (current-branch view))
+                 (setf (active-dialog view)
+                       (make-dialog :title "Fast-Forward Branch"
+                                    :message (format nil "Fast-forward ~A to match upstream?" branch)
+                                    :data (list :branch branch)
+                                    :buttons '("Fast-Forward" "Cancel"))))))))
        nil)
       ;; Rebase onto - 'R' (capital, when on branches panel)
       ((and (key-event-char key) (char= (key-event-char key) #\R))

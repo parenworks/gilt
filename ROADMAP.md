@@ -83,11 +83,11 @@
 
 ### Medium Priority
 
-- [ ] **Rename branch** — rename a local branch
-- [ ] **Stage all / unstage all toggle** — stage or unstage all files at once
-- [ ] **Push tag** — push a tag to remote
-- [ ] **Fast-forward branch** — fast-forward a branch to match its upstream
-- [ ] **New branch from stash** — create a new branch and apply a stash to it
+- [x] **Rename branch** — rename a local branch
+- [x] **Stage all / unstage all toggle** — stage or unstage all files at once
+- [x] **Push tag** — push a tag to remote
+- [x] **Fast-forward branch** — fast-forward a branch to match its upstream
+- [x] **New branch from stash** — create a new branch and apply a stash to it
 
 ### Lower Priority
 

@@ -84,7 +84,7 @@ Each commit line shows:
 | Key | Action |
 |-----|--------|
 | `Space` | Stage/unstage selected file |
-| `a` | Stage all files |
+| `a` | Stage all / unstage all toggle |
 | `e` | Edit file (conflicts) or enter hunk staging mode |
 | `b` | Blame view - show git blame for file |
 | `d` | Discard changes to selected file |
@@ -122,6 +122,7 @@ Press `w` in the Files panel to cycle to Stashes view.
 | `w` | Cycle to next view |
 | `Enter` | Apply selected stash (keep stash) |
 | `p` or `P` | Pop selected stash (apply and remove) |
+| `B` (capital) | Create new branch from stash |
 | `D` (capital) | Drop selected stash |
 | `0` | Focus main panel to scroll stash diff with j/k |
 
@@ -135,6 +136,8 @@ Press `w` in the Files panel to cycle to Stashes view.
 | `f` | Fetch (select remote) |
 | `M` (capital) | Merge selected branch into current |
 | `R` (capital) | Rebase current branch onto selected branch |
+| `N` (capital) | Rename selected branch |
+| `F` (capital) | Fast-forward branch to match upstream |
 | `D` (capital) | Delete selected branch |
 | `C` (capital) | Cherry-pick commits from selected branch |
 
@@ -156,6 +159,7 @@ Press `w` twice from Local branches to reach Tags view.
 | Key | Action |
 |-----|--------|
 | `t` | Create tag on HEAD |
+| `T` (capital) | Push tag to remote |
 | `D` (capital) | Delete selected tag |
 | `w` | Cycle to Submodules view |
 

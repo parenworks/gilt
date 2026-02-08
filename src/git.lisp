@@ -486,6 +486,10 @@
   "Stage all changes"
   (git-run "add" "-A"))
 
+(defun git-unstage-all ()
+  "Unstage all staged changes"
+  (git-run "reset" "HEAD"))
+
 (defun git-discard-file (file)
   "Discard changes to a file"
   (git-run "checkout" "--" file))
@@ -707,6 +711,14 @@
 (defun git-create-branch (name)
   "Create and checkout a new branch"
   (git-run "checkout" "-b" name))
+
+(defun git-rename-branch (old-name new-name)
+  "Rename a local branch"
+  (git-run "branch" "-m" old-name new-name))
+
+(defun git-fast-forward (branch)
+  "Fast-forward BRANCH to match its upstream. Must not be the current branch."
+  (git-run "fetch" "origin" (format nil "~A:~A" branch branch)))
 
 (defun git-merge (branch)
   "Merge a branch into current branch"

@@ -253,6 +253,9 @@
            #:git-commit-set-author
            #:git-commit-add-coauthor
            #:git-create-branch
+           #:git-rename-branch
+           #:git-fast-forward
+           #:git-unstage-all
            #:git-push
            #:git-pull
            #:git-push-interactive

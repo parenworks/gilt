@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Enter` to execute, `q` to cancel
   - Color-coded display for each action type
 - **Rebase branch** — Press `R` on branches panel to rebase current branch onto selected branch
+- **Rename branch** — Press `N` on branches panel to rename a local branch
+- **Fast-forward branch** — Press `F` on branches panel to fast-forward a branch to match upstream
+- **Push tag** — Press `T` in tags view to push a tag (or all tags) to remote
+- **Stage all / unstage all toggle** — `a` key now toggles between staging and unstaging all files
+- **New branch from stash** — Press `B` in stashes view to create a branch from a stash
 - **ROADMAP.md** — Feature roadmap tracking implemented and planned features
 
 ### Fixed
