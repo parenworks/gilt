@@ -509,7 +509,7 @@
      '(("j/k" . "navigate") ("Tab" . "panels") ("r" . "refresh") ("q" . "quit")))
     (1 ; Files panel
      '(("j/k" . "navigate") ("Space" . "stage/unstage") ("e" . "edit/hunks") ("d" . "discard")
-       ("c" . "commit") ("r" . "refresh") ("q" . "quit")))
+       ("c" . "commit") ("C" . "commit+editor") ("w" . "commit-no-hook") ("r" . "refresh") ("q" . "quit")))
     (2 ; Branches panel
      '(("j/k" . "navigate") ("Enter" . "checkout/track") ("n" . "new") ("N" . "rename")
        ("w" . "local/remote") ("M" . "merge") ("R" . "rebase") ("F" . "ff") ("D" . "delete") ("r" . "refresh") ("q" . "quit")))
@@ -653,6 +653,8 @@
                        "   /          Search commits"
                        "   t          Create tag on commit"
                        "   c          New commit (Ctrl+D to submit)"
+                       "   C          Commit with $EDITOR"
+                       "   w          Commit without pre-commit hook"
                        "   A          Amend HEAD commit"
                        "   X          Reset to commit (soft/mixed/hard)"
                        "   F          Create fixup! commit"
@@ -691,6 +693,10 @@
                        "   g          Pop stash"
                        "   Enter      Apply stash"
                        "   B          New branch from stash (in Stashes view)"
+                       ""
+                       " UNDO/REDO"
+                       "   z          Undo last git command (via reflog)"
+                       "   Z          Redo last undone command"
                        ""
                        " OTHER"
                        "   r          Refresh all panels"
@@ -899,6 +905,14 @@
                   (log-command view (format nil "git commit -m \"~A\"" 
                                             (first (dialog-input-lines dlg))))
                   (git-commit msg)
+                  (refresh-data view))))
+             ;; Commit (no hook) dialog
+             ((string= (dialog-title dlg) "Commit (no hook)")
+              (let ((msg (dialog-get-text dlg)))
+                (when (> (length msg) 0)
+                  (log-command view (format nil "git commit --no-verify -m \"~A\""
+                                            (first (dialog-input-lines dlg))))
+                  (git-commit-no-verify msg)
                   (refresh-data view))))
              ;; New Branch dialog
              ((string= (dialog-title dlg) "New Branch")
@@ -1811,6 +1825,29 @@
                           :multiline t
                           :buttons '("Commit" "Cancel")))
        nil)
+      ;; Commit with editor - 'C' (capital, when on files panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\C))
+       (when (= focused-idx 1)  ; Files panel
+         (log-command view (format nil "git commit  # $EDITOR=~A"
+                                   (or (uiop:getenv "EDITOR") "vi")))
+         ;; Suspend TUI, spawn editor, restore TUI
+         (gilt.terminal:restore-terminal)
+         (let ((success (git-commit-with-editor)))
+           (gilt.terminal:setup-terminal)
+           (clear-screen)
+           (when success
+             (refresh-data view))))
+       nil)
+      ;; Commit without hook - 'w' (when on files panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\w))
+       (when (= focused-idx 1)  ; Files panel
+         (setf (active-dialog view)
+               (make-dialog :title "Commit (no hook)"
+                            :message "Commit bypassing pre-commit hooks"
+                            :input-mode t
+                            :multiline t
+                            :buttons '("Commit" "Cancel"))))
+       nil)
       ;; Push - 'P' (capital) opens push confirmation (not in stashes view)
       ((and (key-event-char key) (char= (key-event-char key) #\P)
             (not (and (= focused-idx 1) (show-stashes view))))
@@ -1826,6 +1863,24 @@
              (make-dialog :title "Pull"
                           :message "Pull from origin?"
                           :buttons '("Pull" "Cancel")))
+       nil)
+      ;; Undo - 'z' (global)
+      ((and (key-event-char key) (char= (key-event-char key) #\z))
+       (let ((msg (git-undo)))
+         (if msg
+             (progn
+               (log-command view (format nil "undo: ~A" msg))
+               (refresh-data view))
+             (log-command view "Nothing to undo")))
+       nil)
+      ;; Redo - 'Z' (capital, global)
+      ((and (key-event-char key) (char= (key-event-char key) #\Z))
+       (let ((msg (git-redo)))
+         (if msg
+             (progn
+               (log-command view (format nil "redo: ~A" msg))
+               (refresh-data view))
+             (log-command view "Nothing to redo")))
        nil)
       ;; Stage all / unstage all toggle - 'a'
       ((and (key-event-char key) (char= (key-event-char key) #\a))

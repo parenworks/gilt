@@ -93,12 +93,12 @@
 
 ### High Priority
 
-- [ ] **Commit with editor** — open `$EDITOR` for commit message (supports multiline, verbose)
-- [ ] **Undo/redo** — use reflog to undo/redo the last git command (`z`/`Z`)
+- [x] **Commit with editor** — open `$EDITOR` for commit message (supports multiline, verbose)
+- [x] **Undo/redo** — use reflog to undo/redo the last git command (`z`/`Z`)
+- [x] **Commit without hook** — commit bypassing pre-commit hooks (`--no-verify`)
 
 ### Medium Priority
 
-- [ ] **Commit without hook** — commit bypassing pre-commit hooks (`--no-verify`)
 - [ ] **Checkout tag** — checkout a tag as detached HEAD
 - [ ] **Rename stash** — rename a stash entry
 - [ ] **Set upstream** — set/unset tracking branch for local branch

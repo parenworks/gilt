@@ -746,6 +746,53 @@
                       :output :interactive
                       :error-output :interactive)))
 
+(defun git-commit-with-editor ()
+  "Run git commit using the user's $EDITOR for the commit message.
+   Returns t if commit succeeded, nil if aborted."
+  (let ((result (nth-value 2
+                  (uiop:run-program (list "git" "commit")
+                                    :input :interactive
+                                    :output :interactive
+                                    :error-output :interactive
+                                    :ignore-error-status t))))
+    (zerop result)))
+
+(defun git-commit-no-verify (message)
+  "Create a commit with message, bypassing pre-commit hooks."
+  (git-run "commit" "--no-verify" "-m" message))
+
+(defun git-undo ()
+  "Undo the last git operation by resetting to the previous reflog entry.
+   Returns the reflog message of what was undone, or nil if nothing to undo."
+  (let ((reflog (git-run-lines "reflog" "--format=%H %gs" "-n" "2")))
+    (when (>= (length reflog) 2)
+      (let* ((prev-line (second reflog))
+             (space-pos (position #\Space prev-line))
+             (prev-hash (subseq prev-line 0 space-pos))
+             (prev-msg (subseq prev-line (1+ space-pos))))
+        (git-run "reset" "--hard" prev-hash)
+        prev-msg))))
+
+(defun git-redo ()
+  "Redo the last undone git operation.
+   Walks the reflog to find the entry after the current HEAD.
+   Returns the reflog message of what was redone, or nil if nothing to redo."
+  (let* ((current-hash (string-trim '(#\Newline #\Space)
+                                     (git-run "rev-parse" "HEAD")))
+         (reflog (git-run-lines "reflog" "--format=%H %gs" "-n" "100")))
+    ;; Find current HEAD in reflog, then return the entry before it (newer)
+    (loop for i from 1 below (length reflog)
+          for line = (nth i reflog)
+          for space-pos = (position #\Space line)
+          for hash = (subseq line 0 space-pos)
+          when (string= hash current-hash)
+            do (let* ((newer-line (nth (1- i) reflog))
+                      (newer-space (position #\Space newer-line))
+                      (newer-hash (subseq newer-line 0 newer-space))
+                      (newer-msg (subseq newer-line (1+ newer-space))))
+                 (git-run "reset" "--hard" newer-hash)
+                 (return newer-msg)))))
+
 (defun git-resolve-with-ours (file)
   "Resolve conflict by keeping our version"
   (git-run "checkout" "--ours" file)

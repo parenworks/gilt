@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Push tag** — Press `T` in tags view to push a tag (or all tags) to remote
 - **Stage all / unstage all toggle** — `a` key now toggles between staging and unstaging all files
 - **New branch from stash** — Press `B` in stashes view to create a branch from a stash
+- **Commit with editor** — Press `C` on files panel to open `$EDITOR` for commit message
+- **Commit without hook** — Press `w` on files panel to commit bypassing pre-commit hooks
+- **Undo/redo** — Press `z` to undo last git command, `Z` to redo (uses reflog)
 - **ROADMAP.md** — Feature roadmap tracking implemented and planned features
 
 ### Fixed

@@ -256,6 +256,10 @@
            #:git-rename-branch
            #:git-fast-forward
            #:git-unstage-all
+           #:git-commit-with-editor
+           #:git-commit-no-verify
+           #:git-undo
+           #:git-redo
            #:git-push
            #:git-pull
            #:git-push-interactive

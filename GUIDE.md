@@ -78,6 +78,8 @@ Each commit line shows:
 | `1-5` | Jump directly to panel by number |
 | `r` | Refresh all data |
 | `q` | Quit Gilt |
+| `z` | Undo last git command (via reflog) |
+| `Z` | Redo last undone command |
 
 ### Files Panel `[2]`
 
@@ -93,6 +95,8 @@ Each commit line shows:
 | `X` (capital) | Abort merge in progress |
 | `s` | Stash all changes |
 | `c` | Open commit dialog |
+| `C` (capital) | Commit with `$EDITOR` (suspends TUI) |
+| `w` | Commit without pre-commit hook |
 | `P` (capital) | Push to remote |
 | `p` (lowercase) | Pull from remote |
 | `w` | Cycle: Files → Worktrees → Stashes |
