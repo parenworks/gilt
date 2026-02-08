@@ -107,10 +107,10 @@ Each commit line shows:
 | `s` | Stash all changes |
 | `c` | Open commit dialog |
 | `C` (capital) | Commit with `$EDITOR` (suspends TUI) |
-| `w` | Commit without pre-commit hook |
+| `w` | Cycle: Files → Worktrees → Stashes |
+| `W` (capital) | Commit without pre-commit hook |
 | `P` (capital) | Push to remote |
 | `p` (lowercase) | Pull from remote |
-| `w` | Cycle: Files → Worktrees → Stashes |
 
 ### Worktrees View (in Files Panel)
 

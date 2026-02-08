@@ -238,18 +238,36 @@
     ;; Handle EAGAIN/EWOULDBLOCK which can happen with non-blocking I/O
     (sb-int:simple-stream-error () nil)))
 
+(defun read-byte-from-fd (fd)
+  "Read a single byte directly from file descriptor, bypassing SBCL stream layer.
+   Returns the byte or nil if no data available (EAGAIN)."
+  (let ((buf (make-array 1 :element-type '(unsigned-byte 8))))
+    (declare (dynamic-extent buf))
+    (let ((n (sb-unix:unix-read fd (sb-sys:vector-sap buf) 1)))
+      (cond
+        ((and n (= n 1)) (aref buf 0))
+        (t nil)))))
+
 (defun wait-for-escape-sequence (stream timeout)
-  "Wait for escape sequence bytes with dynamic timeout"
-  (let ((start (get-internal-real-time))
+  "Wait for escape sequence bytes with dynamic timeout.
+   Returns the next byte if available within timeout, or nil for bare Escape.
+   Uses raw fd read to avoid SBCL stream buffering issues."
+  (let ((fd (sb-sys:fd-stream-fd stream))
+        (start (get-internal-real-time))
         (timeout-ticks (* timeout internal-time-units-per-second)))
-    (loop while (< (- (get-internal-real-time) start) timeout-ticks)
-          do (when (listen stream) (return))
-          finally (return (read-byte-nonblocking stream)))))
+    (loop
+      (let ((byte (read-byte-from-fd fd)))
+        (when byte (return byte)))
+      (when (>= (- (get-internal-real-time) start) timeout-ticks)
+        (return nil))
+      (sleep 0.001))))
 
 (defmethod read-key-event ((reader input-reader))
-  "Read a key event from the TTY"
+  "Read a key event from the TTY.
+   Uses raw fd reads throughout to avoid SBCL stream buffering issues."
   (let* ((stream (reader-stream reader))
-         (byte (read-byte-nonblocking stream)))
+         (fd (sb-sys:fd-stream-fd stream))
+         (byte (read-byte-from-fd fd)))
     (unless byte
       (return-from read-key-event nil))
     (cond
@@ -266,7 +284,7 @@
             (let ((params nil)
                   (final-byte nil))
               (loop
-                (setf final-byte (read-byte stream nil nil))
+                (setf final-byte (read-byte-from-fd fd))
                 (unless final-byte (return))
                 (cond
                   ((and (>= final-byte 48) (<= final-byte 57))

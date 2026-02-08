@@ -361,8 +361,10 @@
   (update-main-content view))
 
 (defun format-status-entry (entry)
-  "Format a status entry for display with color"
+  "Format a status entry for display with color.
+   Staged files are shown in green, unstaged in their status color."
   (let* ((status (status-entry-status entry))
+         (staged (status-entry-staged-p entry))
          (indicator (case status
                       (:modified "M")
                       (:added "A")
@@ -371,14 +373,16 @@
                       (:renamed "R")
                       (:conflict "!")
                       (t " ")))
-         (color (case status
-                  (:modified :bright-yellow)
-                  (:added :bright-green)
-                  (:deleted :bright-red)
-                  (:untracked :bright-magenta)
-                  (:renamed :bright-cyan)
-                  (:conflict :bright-red)  ; Conflicts shown in bright red with !
-                  (t :white)))
+         (color (if staged
+                    :bright-green  ; All staged files shown in green
+                    (case status
+                      (:modified :bright-yellow)
+                      (:added :bright-green)
+                      (:deleted :bright-red)
+                      (:untracked :bright-magenta)
+                      (:renamed :bright-cyan)
+                      (:conflict :bright-red)
+                      (t :white))))
          (text (format nil "~A ~A" indicator (status-entry-file entry))))
     (list :colored color text)))
 
@@ -729,13 +733,13 @@
                        "   I          Add file to .gitignore"
                        "   x          Launch external diff tool"
                        "   y          Copy file path to clipboard"
+                       "   W          Commit without pre-commit hook"
                        ""
                        " COMMITS (panel 4)"
                        "   /          Search commits"
                        "   t          Create tag on commit"
                        "   c          New commit (Ctrl+D to submit)"
                        "   C          Commit with $EDITOR"
-                       "   w          Commit without pre-commit hook"
                        "   A          Amend HEAD commit"
                        "   X          Reset to commit (soft/mixed/hard)"
                        "   F          Create fixup! commit"
@@ -2162,15 +2166,15 @@
            (when success
              (refresh-data view))))
        nil)
-      ;; Commit without hook - 'w' (when on files panel)
-      ((and (key-event-char key) (char= (key-event-char key) #\w))
-       (when (= focused-idx 1)  ; Files panel
-         (setf (active-dialog view)
-               (make-dialog :title "Commit (no hook)"
-                            :message "Commit bypassing pre-commit hooks"
-                            :input-mode t
-                            :multiline t
-                            :buttons '("Commit" "Cancel"))))
+      ;; Commit without hook - 'W' (capital, when on files panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\W)
+            (= focused-idx 1))
+       (setf (active-dialog view)
+             (make-dialog :title "Commit (no hook)"
+                          :message "Commit bypassing pre-commit hooks"
+                          :input-mode t
+                          :multiline t
+                          :buttons '("Commit" "Cancel")))
        nil)
       ;; Push - 'P' (capital) opens push confirmation (not in stashes view)
       ((and (key-event-char key) (char= (key-event-char key) #\P)
