@@ -1905,15 +1905,20 @@
          (when (and hunks (< selected (length hunks)))
            (let* ((hunk (nth selected hunks))
                   (body (rest (hunk-content hunk))))  ; skip @@ header
+             (setf (hunk-mode view) nil)  ; exit hunk mode, enter line-select
              (setf (line-select-mode view) t)
              (setf (line-select-hunk view) hunk)
              (setf (line-selected-set view) nil)
              (setf (panel-selected (main-panel view)) 0)
+             (setf (panel-title (main-panel view))
+                   "[0] Line Select (Space=toggle, a=all, n=none, Enter=stage, Esc=back)")
              (setf (panel-items (main-panel view))
                    (loop for line in body
                          for idx from 0
                          for first-char = (if (> (length line) 0) (char line 0) #\Space)
-                         for marker = (if (member idx (line-selected-set view)) "●" " ")
+                         for marker = (cond
+                                        ((char= first-char #\Space) " ")
+                                        (t "○"))
                          collect (format nil "~A ~A" marker line))))))
        (return-from handle-key nil))
       ;; Navigation in hunk list
@@ -1947,8 +1952,10 @@
            (setf (line-select-mode view) nil)
            (setf (line-select-hunk view) nil)
            (setf (line-selected-set view) nil)
+           (setf (hunk-mode view) t)  ; re-enter hunk mode
            ;; Restore hunk list display
            (setf (panel-selected (main-panel view)) 0)
+           (setf (panel-title (main-panel view)) "[0] Hunks (Space=stage, Enter=lines, Esc=back)")
            (setf (panel-items (main-panel view))
                  (loop for h in (hunk-list view)
                        for i from 1
@@ -3330,6 +3337,8 @@
                     (when hunks
                       (setf (hunk-list view) hunks)
                       (setf (hunk-mode view) t)
+                      (setf (panel-title (main-panel view))
+                            "[0] Hunks (Space=stage, Enter=lines, Esc=back)")
                       (setf (panel-items (main-panel view))
                             (loop for hunk in hunks
                                   for i from 1

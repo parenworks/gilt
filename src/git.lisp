@@ -325,15 +325,17 @@
          (full-patch (format nil "--- a/~A~%+++ b/~A~%~A"
                               (hunk-file hunk) (hunk-file hunk) patch)))
     (with-input-from-string (s full-patch)
-      (let ((proc (sb-ext:run-program "/usr/bin/git" '("apply" "--cached" "-")
-                                      :input s :output :stream :error :stream)))
-        (let ((exit-code (sb-ext:process-exit-code proc)))
-          (when (/= exit-code 0)
-            (let ((err (with-output-to-string (out)
-                         (loop for line = (read-line (sb-ext:process-error proc) nil nil)
-                               while line do (write-line line out)))))
-              (values nil err)))
-          (= exit-code 0))))))
+      (let* ((proc (sb-ext:run-program "/usr/bin/git" '("apply" "--cached" "-")
+                                       :input s :output nil :error :stream))
+             (err-output (with-output-to-string (out)
+                           (loop for line = (read-line (sb-ext:process-error proc) nil nil)
+                                 while line do (write-line line out))))
+             (exit-code (sb-ext:process-exit-code proc)))
+        (if (= exit-code 0)
+            t
+            (values nil (if (> (length err-output) 0)
+                            err-output
+                            (format nil "exit code ~D" exit-code))))))))
 
 ;;; Log entry class
 
