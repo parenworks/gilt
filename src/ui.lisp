@@ -400,9 +400,13 @@
          (msg-lines (if (dialog-input-mode dlg)
                         nil
                         (wrap-text msg (min 60 (- screen-width 10)))))
+         (buttons-width (+ 4 (reduce #'+ (mapcar (lambda (b) (+ 3 (length b)))
+                                                  (dialog-buttons dlg))
+                                        :initial-value 0)))
          (base-w (if (dialog-input-mode dlg) 
                      70 
-                     (max 45 (+ 6 (reduce #'max (mapcar #'length msg-lines) :initial-value 0)))))
+                     (max 45 buttons-width
+                          (+ 6 (reduce #'max (mapcar #'length msg-lines) :initial-value 0)))))
          (w (min base-w (- screen-width 4)))
          (h (if (dialog-input-mode dlg)
                 (dialog-height dlg)
