@@ -1367,6 +1367,26 @@
 
 ;;; Open in browser
 
+(defun resolve-ssh-hostname (alias)
+  "Resolve an SSH host alias to its real Hostname from ~/.ssh/config.
+   Returns the alias unchanged if no config entry is found."
+  (let ((config-path (merge-pathnames ".ssh/config" (user-homedir-pathname))))
+    (or (when (probe-file config-path)
+          (with-open-file (s config-path :direction :input)
+            (let ((in-host-block nil))
+              (loop for line = (read-line s nil nil)
+                    while line
+                    for trimmed = (string-trim '(#\Space #\Tab) line)
+                    do (cond
+                         ((cl-ppcre:scan "(?i)^Host\\s+" trimmed)
+                          (let ((host-value (string-trim '(#\Space #\Tab)
+                                                          (subseq trimmed (length "Host ")))))
+                            (setf in-host-block (string= host-value alias))))
+                         ((and in-host-block (cl-ppcre:scan "(?i)^Hostname\\s+" trimmed))
+                          (return (string-trim '(#\Space #\Tab)
+                                                (subseq trimmed (length "Hostname "))))))))))
+        alias)))
+
 (defun git-remote-url-for-browser ()
   "Get the remote URL converted to a browser-friendly HTTPS URL."
   (let* ((url (string-trim '(#\Newline #\Space)
@@ -1375,7 +1395,11 @@
       ;; Convert git@github.com:user/repo.git to https://github.com/user/repo
       (cond
         ((cl-ppcre:scan "^git@" url)
-         (let ((https-url (cl-ppcre:regex-replace "^git@([^:]+):" url "https://\\1/")))
+         ;; Extract SSH host, resolve alias from ~/.ssh/config
+         (let* ((host (cl-ppcre:regex-replace "^git@([^:]+):.*" url "\\1"))
+                (real-host (resolve-ssh-hostname host))
+                (https-url (cl-ppcre:regex-replace "^git@[^:]+:" url
+                                                    (format nil "https://~A/" real-host))))
            (cl-ppcre:regex-replace "\\.git$" https-url "")))
         ((cl-ppcre:scan "^https?://" url)
          (cl-ppcre:regex-replace "\\.git$" url ""))
