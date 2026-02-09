@@ -205,7 +205,7 @@
   (or *terminal* (setf *terminal* (make-instance 'terminal))))
 
 (defun cursor-to (row col)
-  (format *terminal-io* "~C[~D;~DH" *escape* row col))
+  (format *terminal-io* "~C[~D;~DH" *escape* (max 1 row) (max 1 col)))
 
 (defun cursor-home ()
   (format *terminal-io* "~C[H" *escape*))

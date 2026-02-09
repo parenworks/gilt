@@ -89,8 +89,9 @@
 (defun draw-text (row col text &key max-width)
   "Draw text at position, optionally truncating"
   (cursor-to row col)
+  (when (and max-width (<= max-width 0)) (return-from draw-text nil))
   (let ((display-text (if (and max-width (> (length text) max-width))
-                          (concatenate 'string (subseq text 0 (- max-width 1)) "…")
+                          (concatenate 'string (subseq text 0 (max 0 (- max-width 1))) "…")
                           text)))
     (write-string display-text *terminal-io*)))
 
@@ -107,6 +108,8 @@
 
 (defun draw-box (x y width height &key title (focused nil) item-info)
   "Draw a box with optional title and item count info (e.g., '2 of 3')"
+  (when (or (<= width 2) (<= height 2))
+    (return-from draw-box nil))
   (let ((x2 (+ x width -1))
         (y2 (+ y height -1))
         (tl (box-char :top-left))
@@ -124,7 +127,7 @@
     (cursor-to y x)
     (finish-output *terminal-io*)
     (write-char tl *terminal-io*)
-    (loop repeat (- width 2) do (write-char hz *terminal-io*))
+    (loop repeat (max 0 (- width 2)) do (write-char hz *terminal-io*))
     (write-char tr *terminal-io*)
     (finish-output *terminal-io*)
     ;; Vertical lines and bottom corners
@@ -154,7 +157,7 @@
               (fg (color-code :white)))
           (loop repeat right-padding do (write-char hz *terminal-io*)))
         ;; No item info - just draw border
-        (loop repeat (- width 2) do (write-char hz *terminal-io*)))
+        (loop repeat (max 0 (- width 2)) do (write-char hz *terminal-io*)))
     ;; Position explicitly for right corner to ensure alignment
     (cursor-to y2 x2)
     (write-char br *terminal-io*)
@@ -185,7 +188,7 @@
 
 (defun panel-visible-items (panel)
   "Return the items visible in the panel's viewport"
-  (let* ((content-height (- (panel-height panel) 2))
+  (let* ((content-height (max 0 (- (panel-height panel) 2)))
          (items (panel-items panel))
          (offset (panel-scroll-offset panel)))
     (subseq items 
@@ -201,7 +204,7 @@
          (focused (panel-focused panel))
          (selected (panel-selected panel))
          (offset (panel-scroll-offset panel))
-         (content-width (- w 2))
+         (content-width (max 0 (- w 2)))
          (total-items (length (panel-items panel)))
          (item-info (when (> total-items 0)
                       (format nil "~D of ~D" (1+ selected) total-items))))
@@ -298,7 +301,7 @@
   (fg (color-code :white))
   (write-string text *terminal-io*)
   ;; Fill rest of line
-  (loop repeat (- width (length text)) do (write-char #\Space *terminal-io*))
+  (loop repeat (max 0 (- width (length text))) do (write-char #\Space *terminal-io*))
   (reset)
   (finish-output *terminal-io*))
 
@@ -428,7 +431,7 @@
       (fg (color-code :bright-cyan))
       (bg (color-code 236)))
     (let ((title-len (if (dialog-title dlg) (+ 2 (length (dialog-title dlg))) 0)))
-      (loop repeat (- w 2 title-len) do (write-char (box-char :horizontal) *terminal-io*)))
+      (loop repeat (max 0 (- w 2 title-len)) do (write-char (box-char :horizontal) *terminal-io*)))
     (write-char (box-char :top-right) *terminal-io*)
     
     (cond

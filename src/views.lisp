@@ -605,17 +605,17 @@
                        (:half (max 50 (floor width 2)))        ; 50% left
                        (:full (- width 2))                      ; Nearly full width (no right panel)
                        (t (max 50 (floor (* width 2) 5)))))    ; Normal: ~40% left
-         (right-width (- width left-width))
-         (usable-height (- height 1))  ; Leave 1 row for help bar
+         (right-width (max 0 (- width left-width)))
+         (usable-height (max 1 (- height 1)))  ; Leave 1 row for help bar
          (focused-idx (view-focused-panel view))
          ;; Right side split: main panel gets most, cmdlog gets 9 rows
          (cmdlog-height 9)
-         (main-height (- usable-height cmdlog-height))
+         (main-height (max 3 (- usable-height cmdlog-height)))
          ;; Base heights for left panels - small for unfocused, larger for focused
          (min-h 3)  ; Minimum height for collapsed panels
          ;; Calculate expanded height for focused panel
          (total-min (* 5 min-h))
-         (extra-space (- usable-height total-min))
+         (extra-space (max 0 (- usable-height total-min)))
          (expanded-extra (floor extra-space 2))  ; Focused gets half the extra
          (other-extra (floor (- extra-space expanded-extra) 4))  ; Rest split among others
          ;; Calculate individual heights
