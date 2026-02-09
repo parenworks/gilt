@@ -2378,10 +2378,21 @@
                (setf (range-select-start view) (panel-selected panel))
                (log-command view (format nil "Range select started at ~D" (panel-selected panel))))))
        nil)
-      ;; Open in browser - 'o' (context-sensitive)
+      ;; 'o' key - context dependent (resolve conflict ours, open in browser)
       ((and (key-event-char key) (char= (key-event-char key) #\o))
        (let ((base-url (git-remote-url-for-browser)))
          (cond
+           ;; Files panel - resolve conflict with ours
+           ((= focused-idx 1)
+            (let* ((entries (status-entries view))
+                   (selected (panel-selected panel)))
+              (when (and entries (< selected (length entries)))
+                (let ((entry (nth selected entries)))
+                  (when (eq (status-entry-status entry) :conflict)
+                    (log-command view (format nil "git checkout --ours ~A && git add ~A"
+                                               (status-entry-file entry) (status-entry-file entry)))
+                    (git-resolve-with-ours (status-entry-file entry))
+                    (refresh-data view))))))
            ;; Commits panel - open commit URL
            ((and (= focused-idx 3) base-url)
             (let* ((commits (commit-list view))
@@ -2488,20 +2499,6 @@
          (log-command view "git stash pop")
          (git-stash-pop)
          (refresh-data view))
-       nil)
-      ;; Resolve conflict with ours - 'o' (when on files panel with conflict)
-      ((and (key-event-char key) (char= (key-event-char key) #\o)
-            (= focused-idx 1))
-       (when (= focused-idx 1)  ; Files panel
-         (let* ((entries (status-entries view))
-                (selected (panel-selected panel)))
-           (when (and entries (< selected (length entries)))
-             (let ((entry (nth selected entries)))
-               (when (eq (status-entry-status entry) :conflict)
-                 (log-command view (format nil "git checkout --ours ~A && git add ~A" 
-                                           (status-entry-file entry) (status-entry-file entry)))
-                 (git-resolve-with-ours (status-entry-file entry))
-                 (refresh-data view))))))
        nil)
       ;; 't' key - context dependent (conflict resolution, create tag)
       ((and (key-event-char key) (char= (key-event-char key) #\t))
