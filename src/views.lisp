@@ -579,7 +579,7 @@
        (setf (panel-title (main-panel view)) "[0] Main")
        (setf (panel-items (main-panel view)) nil)))))
 
-(defun get-panel-help (focused-idx)
+(defun get-panel-help (focused-idx &optional view)
   "Return context-specific help bindings based on focused panel"
   (case focused-idx
     (0 ; Status panel
@@ -587,13 +587,22 @@
     (1 ; Files panel
      '(("j/k" . "navigate") ("Space" . "stage/unstage") ("e" . "edit/hunks") ("d" . "discard")
        ("c" . "commit") ("v" . "range") ("T" . "tree") ("I" . "ignore") ("x" . "difftool") ("y" . "copy") ("r" . "refresh") ("q" . "quit")))
-    (2 ; Branches panel
-     '(("j/k" . "navigate") ("Enter" . "checkout/track") ("n" . "new") ("N" . "rename")
-       ("w" . "local/remote") ("M" . "merge") ("R" . "rebase") ("F" . "ff") ("s" . "sort") ("D" . "delete") ("r" . "refresh") ("q" . "quit")))
+    (2 ; Branches panel - context-sensitive based on sub-view
+     (cond
+       ((and view (show-remote-branches view))
+        '(("j/k" . "navigate") ("w" . "local/remote") ("f" . "fetch") ("A" . "add remote")
+          ("R" . "rename remote") ("D" . "delete") ("r" . "refresh") ("q" . "quit")))
+       ((and view (show-tags view))
+        '(("j/k" . "navigate") ("w" . "local/remote") ("D" . "delete") ("r" . "refresh") ("q" . "quit")))
+       ((and view (show-submodules view))
+        '(("j/k" . "navigate") ("w" . "local/remote") ("U" . "update") ("r" . "refresh") ("q" . "quit")))
+       (t
+        '(("j/k" . "navigate") ("Enter" . "checkout") ("n" . "new") ("N" . "rename")
+          ("w" . "local/remote") ("M" . "merge") ("R" . "rebase") ("F" . "ff") ("s" . "sort") ("D" . "delete") ("r" . "refresh") ("q" . "quit")))))
     (3 ; Commits panel
      '(("j/k" . "navigate") ("i" . "rebase") ("X" . "reset") ("A" . "amend") ("C" . "cherry-pick") ("R" . "revert") ("S" . "squash") ("F" . "fixup") ("t" . "tag") ("b" . "bisect") ("o" . "browser") ("r" . "refresh") ("q" . "quit")))
     (4 ; Stash panel
-     '(("j/k" . "navigate") ("s" . "stash") ("g" . "pop") ("r" . "refresh") ("q" . "quit")))
+     '(("j/k" . "navigate") ("s" . "stash") ("g" . "pop") ("D" . "drop") ("r" . "refresh") ("q" . "quit")))
     (t ; Default
      '(("j/k" . "navigate") ("Tab" . "panels") ("r" . "refresh") ("q" . "quit")))))
 
@@ -686,7 +695,7 @@
     ;; Draw command log panel (not in focus cycle)
     (draw-panel (cmdlog-panel view))
     ;; Draw context-specific help bar at bottom (with version from gilt package)
-    (draw-help-bar height width (get-panel-help focused-idx) 
+    (draw-help-bar height width (get-panel-help focused-idx view) 
                    (when (find-package :gilt) 
                      (symbol-value (find-symbol "*VERSION*" :gilt))))
     ;; Draw spinner in bottom left if active
@@ -2612,7 +2621,8 @@
                                   :buttons '("OK"))))))
        nil)
       ;; Add worktree - 'A' (capital, when on files panel in worktrees view)
-      ((and (key-event-char key) (char= (key-event-char key) #\A))
+      ((and (key-event-char key) (char= (key-event-char key) #\A)
+            (= focused-idx 1))
        (when (and (= focused-idx 1) (show-worktrees view))
          (setf (active-dialog view)
                (make-dialog :title "Add Worktree"
@@ -2787,9 +2797,9 @@
                                     :data (list :branch branch)
                                     :buttons '("Fast-Forward" "Cancel"))))))))
        nil)
-      ;; Rebase onto - 'R' (capital, when on branches panel)
+      ;; Rebase onto - 'R' (capital, when on branches panel, local view only)
       ((and (key-event-char key) (char= (key-event-char key) #\R)
-            (= focused-idx 2))
+            (= focused-idx 2) (not (show-remote-branches view)))
        (when (and (= focused-idx 2) (not (show-remote-branches view))
                   (not (show-tags view)) (not (show-submodules view)))
          (let* ((branches (branch-list view))
@@ -2824,7 +2834,8 @@
                                   :buttons '("Update All" "Cancel"))))))
        nil)
       ;; Add remote - 'A' (capital, when on branches panel in remotes view)
-      ((and (key-event-char key) (char= (key-event-char key) #\A))
+      ((and (key-event-char key) (char= (key-event-char key) #\A)
+            (= focused-idx 2))
        (when (and (= focused-idx 2) (show-remote-branches view))
          (setf (active-dialog view)
                (make-dialog :title "Add Remote"
@@ -2844,7 +2855,7 @@
                     (remote (first (cl-ppcre:split "/" remote-branch :limit 2))))
                (setf (active-dialog view)
                      (make-dialog :title "Rename Remote"
-                                  :message (format nil "New name for '~A':" remote)
+                                  :message (format nil "Rename remote '~A' to (e.g. origin, upstream):" remote)
                                   :input-mode t
                                   :data (list :old-name remote)
                                   :buttons '("Rename" "Cancel")))))))
