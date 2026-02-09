@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-02-09
+
+### Added
+
+- **Line-level staging** — Stage individual lines within a hunk
+  - Press `e` on a modified file to enter hunk mode
+  - Press `Enter` on a hunk to see individual diff lines
+  - `Space` toggles line selection (● selected, ○ unselected)
+  - `a` selects all changed lines, `n` deselects all
+  - `Enter` stages only the selected lines
+  - `Escape` returns to hunk list
+  - Builds valid partial patches with corrected line counts
+- **Stash individual files** — Press `S` on files panel to stash selected file(s)
+  - Opens dialog for optional stash message
+  - Supports untracked files (`--include-untracked`)
+  - Works with range selection (`v`) for multiple files
+- **Commit graph** — Press `g` on commits panel to toggle graph view
+  - Shows `git log --graph --oneline --decorate --all` in main panel
+  - Toggle on/off with `g` key
+- **Stash diff view** — Main panel shows colored diff when stash panel is focused
+- **Mouse scroll wheel** — Scroll wheel navigates items up/down in focused panel
+  - SGR mouse tracking enabled (works in terminals that support it)
+  - Click support implemented for terminals that pass click events through
+
+### Fixed
+
+- **Blue bar artifacts on backspace in dialogs** — Old characters now cleared when input text shrinks
+- **Stash individual files failing for untracked files** — Added `--include-untracked` flag
+
 ## [0.14.0] - 2026-02-09
 
 ### Added
@@ -202,7 +231,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Branch tracking info (ahead/behind upstream)
   - Repository state indicator (MERGING, REBASING, etc.)
 
-[Unreleased]: https://github.com/parenworks/gilt/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/parenworks/gilt/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/parenworks/gilt/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/parenworks/gilt/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/parenworks/gilt/releases/tag/v0.13.0
 [0.12.0]: https://github.com/parenworks/gilt/releases/tag/v0.12.0

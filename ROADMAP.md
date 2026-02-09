@@ -18,9 +18,11 @@
 - [x] Conflict resolution (ours/theirs)
 - [x] Edit file in external editor
 - [x] Hunk staging (partial staging via `e` key)
+- [x] Line-level staging (select individual lines within hunks)
 - [x] Blame view
 - [x] Worktree management (add, remove, force remove)
 - [x] Stash view (apply, pop, drop)
+- [x] Stash individual files (`S` key)
 
 ### Branches Panel
 
@@ -43,6 +45,7 @@
 
 - [x] Commit log with hash, author, and message
 - [x] Commit detail view with full message
+- [x] Commit graph view (`g` key — all branches)
 - [x] Cherry-pick
 - [x] Revert commit
 - [x] Amend commit (staged changes into HEAD, with or without new message)
@@ -63,7 +66,7 @@
 - [x] Apply stash
 - [x] Pop stash
 - [x] Drop stash
-- [x] Stash diff view
+- [x] Stash diff view (colored diff in main panel)
 
 ### Global
 
@@ -74,6 +77,8 @@
 - [x] Context-sensitive help bar
 - [x] Panel navigation (Tab, h/l, number keys)
 - [x] Main panel scrolling
+- [x] Mouse scroll wheel navigation
+- [x] Mouse click support (terminal-dependent)
 - [x] Help screen (?)
 - [x] FFI-based terminal control (no stty dependency)
 

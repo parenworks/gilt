@@ -105,6 +105,7 @@ Each commit line shows:
 | `t` | Resolve conflict with "theirs" (incoming version) |
 | `X` (capital) | Abort merge in progress |
 | `s` | Stash all changes |
+| `S` (capital) | Stash selected file(s) with optional message |
 | `c` | Open commit dialog |
 | `C` (capital) | Commit with `$EDITOR` (suspends TUI) |
 | `w` | Cycle: Files → Worktrees → Stashes |
@@ -207,6 +208,7 @@ Press `w` three times from Local branches to reach Submodules view.
 | `S` (capital) | Squash commits (select target commit) |
 | `C` (capital) | Cherry-pick selected commit |
 | `R` (capital) | Revert selected commit |
+| `g` | Toggle commit graph view (all branches) |
 | `i` | Interactive rebase (select range, then mark actions) |
 | `b` | Start bisect (then `b`:bad `g`:good `Q`:reset) |
 | `y` | Copy commit hash to clipboard |
@@ -269,7 +271,23 @@ Stage only specific parts of a file:
 3. The **Main panel** shows individual hunks
 4. Use `j`/`k` to navigate hunks
 5. Press `Space` to stage a specific hunk
-6. Press `Escape` to exit hunk mode
+6. Press `Enter` to enter **line-level staging** for the selected hunk
+7. Press `Escape` to exit hunk mode
+
+### Line-Level Staging
+
+Stage individual lines within a hunk for precise control:
+
+1. Enter hunk mode (`e` on a modified file)
+2. Press `Enter` on a hunk to see its individual diff lines
+3. Lines are shown with markers: `○` (unselected) and `●` (selected)
+4. Use `j`/`k` to navigate lines
+5. Press `Space` to toggle a line's selection (only `+` and `-` lines can be toggled)
+6. Press `a` to select all changed lines, `n` to deselect all
+7. Press `Enter` to stage only the selected lines
+8. Press `Escape` to go back to the hunk list
+
+This is a power-user feature that lets you commit exactly the lines you want, even within a single hunk.
 
 ### Creating a New Branch
 
@@ -486,7 +504,7 @@ Gilt works on various Unix systems including NixOS, standard Linux distributions
 |----------|-------------|----------|
 | `GILT_ESCAPE_TIMEOUT` | Escape sequence timeout (seconds) | `0.01` |
 
-Since v0.13.0, Gilt uses FFI-based terminal control (POSIX termios) and no longer depends on `stty` or any external terminal utilities. As of v0.14.0, all key handlers have been thoroughly tested and the hints bar is context-sensitive.
+Since v0.13.0, Gilt uses FFI-based terminal control (POSIX termios) and no longer depends on `stty` or any external terminal utilities. As of v0.15.0, Gilt supports line-level staging, commit graph view, stash individual files, mouse scroll wheel, and context-sensitive panel titles for all modes.
 
 ### Diagnostics
 

@@ -2,7 +2,7 @@
   :description "A LazyGit-style Git TUI in Common Lisp"
   :author "Glenn"
   :license "MIT"
-  :version "0.14.0"
+  :version "0.15.0"
   :depends-on (#:alexandria
                #:cl-ppcre
                #:bordeaux-threads)
