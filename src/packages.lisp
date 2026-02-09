@@ -376,6 +376,7 @@
            #:git-stash-push
            #:git-stash-push-staged
            #:git-stash-push-include-untracked
+           #:git-stash-push-files
            #:git-stash-pop
            #:git-stash-apply
            #:git-stash-drop

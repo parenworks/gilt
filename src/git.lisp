@@ -1270,6 +1270,14 @@
       (git-run "stash" "push" "--include-untracked" "-m" message)
       (git-run "stash" "push" "--include-untracked")))
 
+(defun git-stash-push-files (files &optional message)
+  "Stash specific FILES (list of file paths) with optional message."
+  (let ((args (list "stash" "push")))
+    (when message
+      (setf args (append args (list "-m" message))))
+    (setf args (append args (list "--") files))
+    (apply #'git-run args)))
+
 (defun git-stash-pop (&optional index)
   "Pop stash at INDEX (default 0)."
   (if index

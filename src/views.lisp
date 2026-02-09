@@ -586,7 +586,7 @@
      '(("j/k" . "navigate") ("Tab" . "panels") ("r" . "refresh") ("q" . "quit")))
     (1 ; Files panel
      '(("j/k" . "navigate") ("Space" . "stage/unstage") ("e" . "edit/hunks") ("d" . "discard")
-       ("c" . "commit") ("v" . "range") ("T" . "tree") ("I" . "ignore") ("x" . "difftool") ("y" . "copy") ("r" . "refresh") ("q" . "quit")))
+       ("c" . "commit") ("v" . "range") ("S" . "stash file") ("T" . "tree") ("I" . "ignore") ("x" . "difftool") ("y" . "copy") ("r" . "refresh") ("q" . "quit")))
     (2 ; Branches panel - context-sensitive based on sub-view
      (cond
        ((and view (show-remote-branches view))
@@ -1394,6 +1394,20 @@
                   (log-command view (format nil "git stash drop stash@{~D}" idx))
                   (git-stash-drop idx)
                   (refresh-data view))))
+             ;; Stash File(s) dialog
+             ((string= (dialog-title dlg) "Stash File(s)")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-idx (dialog-selected-button dlg))
+                     (selected-button (nth selected-idx buttons)))
+                (when (string= selected-button "Stash")
+                  (let ((files (getf (dialog-data dlg) :files))
+                        (message (first (dialog-input-lines dlg))))
+                    (when files
+                      (let ((msg (if (and message (> (length message) 0)) message nil)))
+                        (log-command view (format nil "git stash push ~@[-m \"~A\" ~]-- ~{~A~^ ~}" msg files))
+                        (git-stash-push-files files msg)
+                        (setf (range-select-start view) nil)
+                        (refresh-data view)))))))
              ;; Pop Stash dialog
              ((string= (dialog-title dlg) "Pop Stash")
               (let* ((idx (getf (dialog-data dlg) :stash-index))
@@ -2888,8 +2902,34 @@
                                                            branch (current-branch view))
                                           :buttons '("OK"))))))))))
        nil)
+      ;; Stash file(s) - 'S' (capital, when on files panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\S)
+            (= focused-idx 1))
+       (when (= focused-idx 1)
+         (let* ((entries (status-entries view))
+                (selected (panel-selected panel)))
+           (when (and entries (< selected (length entries)))
+             (let ((files (if (range-select-start view)
+                              ;; Range active - stash all files in range
+                              (let* ((start (min (range-select-start view) selected))
+                                     (end (max (range-select-start view) selected)))
+                                (loop for i from start to end
+                                      when (< i (length entries))
+                                      collect (status-entry-file (nth i entries))))
+                              ;; Single file
+                              (list (status-entry-file (nth selected entries))))))
+               (setf (active-dialog view)
+                     (make-dialog :title "Stash File(s)"
+                                  :message (if (= (length files) 1)
+                                               (format nil "Stash '~A':" (first files))
+                                               (format nil "Stash ~D files:" (length files)))
+                                  :input-mode t
+                                  :data (list :files files)
+                                  :buttons '("Stash" "Cancel")))))))
+       nil)
       ;; Squash commits - 'S' (capital, when on commits panel)
-      ((and (key-event-char key) (char= (key-event-char key) #\S))
+      ((and (key-event-char key) (char= (key-event-char key) #\S)
+            (= focused-idx 3))
        (when (= focused-idx 3)  ; Commits panel
          (let ((selected (panel-selected panel)))
            (when (> selected 0)  ; Need at least 2 commits to squash
