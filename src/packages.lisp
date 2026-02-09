@@ -247,6 +247,8 @@
            #:hunk-selected-p
            #:parse-diff-hunks
            #:git-stage-hunk
+           #:git-stage-lines
+           #:build-partial-patch
            #:git-stash
            #:git-stash-pop
            #:git-stash-list

@@ -272,6 +272,69 @@
         (sb-ext:run-program "/usr/bin/git" '("apply" "--cached" "-")
                             :input s :output nil :error nil)))))
 
+(defun build-partial-patch (hunk selected-indices)
+  "Build a valid patch from HUNK containing only lines at SELECTED-INDICES.
+   SELECTED-INDICES are 0-based indices into the hunk content (excluding header).
+   Context lines are always included. Unselected + lines become context.
+   Unselected - lines are dropped (kept in working copy)."
+  (let* ((content (hunk-content hunk))
+         (header (first content))
+         (body (rest content))
+         (new-body nil)
+         (old-count 0)
+         (new-count 0))
+    ;; Process each line in the hunk body
+    (loop for line in body
+          for idx from 0
+          for first-char = (if (> (length line) 0) (char line 0) #\Space)
+          for selected = (member idx selected-indices)
+          do (cond
+               ;; Context line - always include
+               ((char= first-char #\Space)
+                (push line new-body)
+                (incf old-count)
+                (incf new-count))
+               ;; Added line (+) - include if selected, otherwise drop
+               ((char= first-char #\+)
+                (if selected
+                    (progn (push line new-body) (incf new-count))
+                    nil))  ; drop unselected additions
+               ;; Removed line (-) - include if selected, otherwise convert to context
+               ((char= first-char #\-)
+                (if selected
+                    (progn (push line new-body) (incf old-count))
+                    (progn
+                      ;; Convert to context line (keep in both old and new)
+                      (push (concatenate 'string " " (subseq line 1)) new-body)
+                      (incf old-count)
+                      (incf new-count))))
+               ;; Other lines (e.g., "\ No newline at end of file")
+               (t (push line new-body))))
+    ;; Build new header with corrected counts
+    (let ((new-header (cl-ppcre:regex-replace
+                       "@@ -(\\d+)(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@"
+                       header
+                       (format nil "@@ -\\1,~D +\\2,~D @@" old-count new-count))))
+      (cons new-header (nreverse new-body)))))
+
+(defun git-stage-lines (hunk selected-indices)
+  "Stage specific lines from a hunk. SELECTED-INDICES are 0-based indices
+   into the hunk body (excluding the @@ header line)."
+  (let* ((patch-lines (build-partial-patch hunk selected-indices))
+         (patch (format nil "~{~A~%~}" patch-lines))
+         (full-patch (format nil "--- a/~A~%+++ b/~A~%~A"
+                              (hunk-file hunk) (hunk-file hunk) patch)))
+    (with-input-from-string (s full-patch)
+      (let ((proc (sb-ext:run-program "/usr/bin/git" '("apply" "--cached" "-")
+                                      :input s :output :stream :error :stream)))
+        (let ((exit-code (sb-ext:process-exit-code proc)))
+          (when (/= exit-code 0)
+            (let ((err (with-output-to-string (out)
+                         (loop for line = (read-line (sb-ext:process-error proc) nil nil)
+                               while line do (write-line line out)))))
+              (values nil err)))
+          (= exit-code 0))))))
+
 ;;; Log entry class
 
 (defclass log-entry ()

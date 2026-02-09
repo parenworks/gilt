@@ -130,7 +130,11 @@
    ;; Screen mode
    (screen-mode :accessor screen-mode :initform :normal)
    ;; Graph mode for commits
-   (graph-mode :accessor graph-mode :initform nil)))
+   (graph-mode :accessor graph-mode :initform nil)
+   ;; Line-level staging mode
+   (line-select-mode :accessor line-select-mode :initform nil)
+   (line-select-hunk :accessor line-select-hunk :initform nil)
+   (line-selected-set :accessor line-selected-set :initform nil)))
 
 (defmethod initialize-instance :after ((view main-view) &key)
   ;; Create all panels
@@ -1894,6 +1898,24 @@
                    (setf (hunk-mode view) nil)
                    (refresh-data view))))))
        (return-from handle-key nil))
+      ;; Enter opens line-level staging for selected hunk
+      ((eq (key-event-code key) +key-enter+)
+       (let* ((hunks (hunk-list view))
+              (selected (panel-selected (main-panel view))))
+         (when (and hunks (< selected (length hunks)))
+           (let* ((hunk (nth selected hunks))
+                  (body (rest (hunk-content hunk))))  ; skip @@ header
+             (setf (line-select-mode view) t)
+             (setf (line-select-hunk view) hunk)
+             (setf (line-selected-set view) nil)
+             (setf (panel-selected (main-panel view)) 0)
+             (setf (panel-items (main-panel view))
+                   (loop for line in body
+                         for idx from 0
+                         for first-char = (if (> (length line) 0) (char line 0) #\Space)
+                         for marker = (if (member idx (line-selected-set view)) "●" " ")
+                         collect (format nil "~A ~A" marker line))))))
+       (return-from handle-key nil))
       ;; Navigation in hunk list
       ((or (eq (key-event-code key) +key-down+)
            (and (key-event-char key) (char= (key-event-char key) #\j)))
@@ -1903,6 +1925,83 @@
            (and (key-event-char key) (char= (key-event-char key) #\k)))
        (panel-select-prev (main-panel view))
        (return-from handle-key nil))))
+
+  ;; Handle line-select mode (line-level staging within a hunk)
+  (when (line-select-mode view)
+    (let* ((hunk (line-select-hunk view))
+           (body (rest (hunk-content hunk)))
+           (selected-set (line-selected-set view)))
+      (flet ((refresh-line-display ()
+               (setf (panel-items (main-panel view))
+                     (loop for line in body
+                           for idx from 0
+                           for first-char = (if (> (length line) 0) (char line 0) #\Space)
+                           for marker = (cond
+                                          ((char= first-char #\Space) " ")  ; context - no marker
+                                          ((member idx (line-selected-set view)) "●")
+                                          (t "○"))
+                           collect (format nil "~A ~A" marker line)))))
+        (cond
+          ;; Escape goes back to hunk list
+          ((eq (key-event-code key) +key-escape+)
+           (setf (line-select-mode view) nil)
+           (setf (line-select-hunk view) nil)
+           (setf (line-selected-set view) nil)
+           ;; Restore hunk list display
+           (setf (panel-selected (main-panel view)) 0)
+           (setf (panel-items (main-panel view))
+                 (loop for h in (hunk-list view)
+                       for i from 1
+                       collect (format nil "Hunk ~D: ~A (+~D lines)"
+                                       i (hunk-header h) (hunk-line-count h)))))
+          ;; Space toggles current line selection (only for +/- lines)
+          ((and (key-event-char key) (char= (key-event-char key) #\Space))
+           (let* ((idx (panel-selected (main-panel view)))
+                  (line (nth idx body))
+                  (first-char (if (and line (> (length line) 0)) (char line 0) #\Space)))
+             (when (or (char= first-char #\+) (char= first-char #\-))
+               (if (member idx selected-set)
+                   (setf (line-selected-set view) (remove idx selected-set))
+                   (push idx (line-selected-set view)))))
+           (refresh-line-display))
+          ;; 'a' selects all +/- lines
+          ((and (key-event-char key) (char= (key-event-char key) #\a))
+           (setf (line-selected-set view)
+                 (loop for line in body
+                       for idx from 0
+                       for fc = (if (> (length line) 0) (char line 0) #\Space)
+                       when (or (char= fc #\+) (char= fc #\-))
+                       collect idx))
+           (refresh-line-display))
+          ;; 'n' deselects all
+          ((and (key-event-char key) (char= (key-event-char key) #\n))
+           (setf (line-selected-set view) nil)
+           (refresh-line-display))
+          ;; Enter stages selected lines
+          ((eq (key-event-code key) +key-enter+)
+           (let ((indices (line-selected-set view)))
+             (if indices
+                 (progn
+                   (log-command view (format nil "git apply --cached (~D lines)" (length indices)))
+                   (multiple-value-bind (ok err)
+                       (git-stage-lines hunk indices)
+                     (if ok
+                         (progn
+                           ;; Success - exit line mode and refresh
+                           (setf (line-select-mode view) nil)
+                           (setf (hunk-mode view) nil)
+                           (setf (hunk-list view) nil)
+                           (refresh-data view))
+                         (log-command view (format nil "Patch failed: ~A" err)))))
+                 (log-command view "No lines selected"))))
+          ;; Navigation
+          ((or (eq (key-event-code key) +key-down+)
+               (and (key-event-char key) (char= (key-event-char key) #\j)))
+           (panel-select-next (main-panel view)))
+          ((or (eq (key-event-code key) +key-up+)
+               (and (key-event-char key) (char= (key-event-char key) #\k)))
+           (panel-select-prev (main-panel view))))))
+    (return-from handle-key nil))
 
   ;; Interactive rebase mode key handling
   (when (rebase-mode view)
