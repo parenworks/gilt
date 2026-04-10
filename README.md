@@ -4,6 +4,14 @@
 
 A LazyGit-style Git TUI written in Common Lisp.
 
+## Screenshots
+
+### Main View
+![Gilt main view showing 5-panel layout](images/gilt.png)
+
+### Diff View
+![Gilt diff view showing file changes](images/gilt1.png)
+
 ## Features
 
 - **Pure ANSI rendering** - No ncurses dependency, direct terminal control
