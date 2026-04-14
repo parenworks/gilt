@@ -126,24 +126,45 @@
         (warn "Failed to disable raw mode: ~A" e)))
     (setf (terminal-raw-p mode) nil)))
 
+(defun query-size-ioctl ()
+  "Query terminal size via ioctl TIOCGWINSZ. Returns (cols rows) or nil."
+  (handler-case
+      (sb-alien:with-alien ((ws (sb-alien:array (sb-alien:unsigned 16) 4)))
+        (let ((ret (sb-alien:alien-funcall
+                    (sb-alien:extern-alien "ioctl"
+                                           (function sb-alien:int sb-alien:int
+                                                     sb-alien:unsigned-long (* t)))
+                    (sb-sys:fd-stream-fd sb-sys:*stdin*)
+                    #x5413
+                    (sb-alien:addr (sb-alien:deref ws 0)))))
+          (when (zerop ret)
+            (let ((rows (sb-alien:deref ws 0))
+                  (cols (sb-alien:deref ws 1)))
+              (when (and (> rows 0) (< rows 1000) (> cols 0) (< cols 1000))
+                (list cols rows))))))
+    (error () nil)))
+
+(defun query-size-stty ()
+  "Query terminal size via stty as fallback. Returns (cols rows) or nil."
+  (handler-case
+      (let* ((output (string-trim '(#\Newline #\Space)
+                                  (with-output-to-string (s)
+                                    (sb-ext:run-program "/usr/bin/stty" '("size")
+                                                        :output s :error nil
+                                                        :input "/dev/tty"))))
+             (parts (cl-ppcre:split "\\s+" output)))
+        (when (= (length parts) 2)
+          (let ((rows (parse-integer (first parts) :junk-allowed t))
+                (cols (parse-integer (second parts) :junk-allowed t)))
+            (when (and rows cols (> rows 0) (> cols 0))
+              (list cols rows)))))
+    (error () nil)))
+
 (defmethod query-size ((mode terminal-mode))
   (declare (ignore mode))
-  (handler-case
-      (sb-alien:with-alien ((buf (sb-alien:array (sb-alien:unsigned 8) 8)))
-        (sb-alien:alien-funcall
-         (sb-alien:extern-alien "ioctl"
-                                (function sb-alien:int sb-alien:int
-                                          sb-alien:unsigned-long (* t)))
-         (sb-sys:fd-stream-fd sb-sys:*stdin*)
-         #x5413
-         (sb-alien:addr (sb-alien:deref buf 0)))
-        (let ((rows (logior (sb-alien:deref buf 0) (ash (sb-alien:deref buf 1) 8)))
-              (cols (logior (sb-alien:deref buf 2) (ash (sb-alien:deref buf 3) 8))))
-          (when (and (> rows 0) (> cols 0))
-            (list cols rows))))
-    (error (e)
-      (warn "Failed to query terminal size: ~A" e)
-      '(80 24))))
+  (or (query-size-ioctl)
+      (query-size-stty)
+      '(80 24)))
 
 ;;; Global terminal mode instance
 
