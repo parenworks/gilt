@@ -56,16 +56,38 @@
 ;;; Global current repository instance
 (defparameter *current-repo* nil "The current git repository")
 
+(defun git-toplevel ()
+  "Get the git repository root, or nil if not in a repo."
+  (let ((root (string-trim '(#\Newline #\Space)
+                            (with-output-to-string (s)
+                              (sb-ext:run-program "/usr/bin/git" 
+                                                  '("rev-parse" "--show-toplevel")
+                                                  :output s :error nil :search t)))))
+    (if (or (null root) (string= root "")) nil root)))
+
+(defun git-init ()
+  "Initialize a new git repository in the current directory."
+  (with-output-to-string (s)
+    (sb-ext:run-program "/usr/bin/git" '("init")
+                        :output s :error nil :search t)))
+
 (defun ensure-repo ()
   "Ensure *current-repo* is initialized"
   (unless *current-repo*
-    (let* ((root (string-trim '(#\Newline #\Space)
-                              (with-output-to-string (s)
-                                (sb-ext:run-program "/usr/bin/git" 
-                                                    '("rev-parse" "--show-toplevel")
-                                                    :output s :error nil :search t))))
-           (name (car (last (cl-ppcre:split "/" root)))))
-      (setf *current-repo* (make-instance 'git-repository :path root :name name))))
+    (let ((root (git-toplevel)))
+      (unless root
+        (format t "Not a git repository. Create a new git repository? (y/N): ")
+        (finish-output)
+        (let ((response (read-line *standard-input* nil "")))
+          (if (member response '("y" "Y" "yes" "Yes") :test #'string=)
+              (progn
+                (git-init)
+                (setf root (git-toplevel))
+                (unless root
+                  (error "Failed to initialize git repository")))
+              (sb-ext:exit :code 0))))
+      (let ((name (car (last (cl-ppcre:split "/" root)))))
+        (setf *current-repo* (make-instance 'git-repository :path root :name name)))))
   *current-repo*)
 
 (defvar *parent-repo-stack* nil "Stack of parent repos for submodule navigation")

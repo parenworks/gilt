@@ -156,6 +156,8 @@
 
 (defun run ()
   "Entry point - run Gilt"
+  ;; Check for git repo before entering raw mode (so prompt works normally)
+  (gilt.git:ensure-repo)
   (with-raw-terminal
     (setf *app* (make-instance 'application))
     (app-init *app*)
