@@ -126,6 +126,11 @@
         (warn "Failed to disable raw mode: ~A" e)))
     (setf (terminal-raw-p mode) nil)))
 
+(defparameter *tiocgwinsz*
+  #+darwin #x40087468
+  #-darwin #x5413
+  "TIOCGWINSZ ioctl constant (differs between Linux and macOS)")
+
 (defun query-size-ioctl ()
   "Query terminal size via ioctl TIOCGWINSZ. Returns (cols rows) or nil."
   (handler-case
@@ -135,7 +140,7 @@
                                            (function sb-alien:int sb-alien:int
                                                      sb-alien:unsigned-long (* t)))
                     (sb-sys:fd-stream-fd sb-sys:*stdin*)
-                    #x5413
+                    *tiocgwinsz*
                     (sb-alien:addr (sb-alien:deref ws 0)))))
           (when (zerop ret)
             (let ((rows (sb-alien:deref ws 0))
@@ -147,11 +152,13 @@
 (defun query-size-stty ()
   "Query terminal size via stty as fallback. Returns (cols rows) or nil."
   (handler-case
-      (let* ((output (string-trim '(#\Newline #\Space)
+      (let* ((stty-path (or (probe-file "/usr/bin/stty") (probe-file "/bin/stty") "stty"))
+             (output (string-trim '(#\Newline #\Space)
                                   (with-output-to-string (s)
-                                    (sb-ext:run-program "/usr/bin/stty" '("size")
+                                    (sb-ext:run-program (namestring stty-path) '("size")
                                                         :output s :error nil
-                                                        :input "/dev/tty"))))
+                                                        :input "/dev/tty"
+                                                        :search t))))
              (parts (cl-ppcre:split "\\s+" output)))
         (when (= (length parts) 2)
           (let ((rows (parse-integer (first parts) :junk-allowed t))
