@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build and release (e.g., v0.12.0)'
+        description: 'Tag to build and release (e.g., v0.16.0)'
         required: true
         type: string
 
@@ -16,7 +16,20 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: linux-x86_64
+            install_sbcl: sudo apt-get update && sudo apt-get install -y sbcl make
+          - os: macos-14
+            arch: darwin-arm64
+            install_sbcl: brew install sbcl
+          - os: macos-13
+            arch: darwin-x86_64
+            install_sbcl: brew install sbcl
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout source
@@ -25,7 +38,7 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
 
       - name: Install SBCL
-        run: sudo apt-get update && sudo apt-get install -y sbcl make
+        run: ${{ matrix.install_sbcl }}
 
       - name: Install Quicklisp
         run: |
@@ -49,14 +62,9 @@ jobs:
         run: echo "name=${{ inputs.tag || github.ref_name }}" >> $GITHUB_OUTPUT
 
       - name: Package binary
-        run: tar -czvf gilt-${{ steps.tag.outputs.name }}-linux-x86_64.tar.gz gilt
-
-      - name: Create release if it doesn't exist
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release view ${{ steps.tag.outputs.name }} || gh release create ${{ steps.tag.outputs.name }} --title "${{ steps.tag.outputs.name }}" --generate-notes
+        run: tar -czvf gilt-${{ steps.tag.outputs.name }}-${{ matrix.arch }}.tar.gz gilt
 
       - name: Upload binary to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload ${{ steps.tag.outputs.name }} gilt-${{ steps.tag.outputs.name }}-linux-x86_64.tar.gz --clobber
+        run: gh release upload ${{ steps.tag.outputs.name }} gilt-${{ steps.tag.outputs.name }}-${{ matrix.arch }}.tar.gz --clobber
