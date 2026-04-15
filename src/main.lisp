@@ -8,7 +8,7 @@
 ;;; - MAJOR: incompatible API changes
 ;;; - MINOR: new functionality (backwards compatible)
 ;;; - PATCH: bug fixes (backwards compatible)
-(defparameter *version* "0.15.0"
+(defparameter *version* "0.16.0"
   "Gilt version number")
 
 ;;; Application class - encapsulates all application state
@@ -89,6 +89,12 @@
   (setf (app-running-p app) t)
   (app-render app)
   (loop while (app-running-p app) do
+    ;; Check for SIGWINCH resize before blocking on input
+    (let ((resize (check-resize)))
+      (when resize
+        (setf (app-width app) (first resize)
+              (app-height app) (second resize))
+        (app-render app)))
     ;; Check if current view has an active runner - use timeout if so
     (let* ((view (app-current-view app))
            (has-runner (and view 
@@ -96,20 +102,21 @@
                             (slot-value view 'gilt.views::active-runner)))
            (key (if has-runner
                     (read-key-with-timeout 100)  ; 100ms timeout for polling
-                    (read-key))))
-      ;; If timeout (nil key) and runner active, just re-render to show updates
-      (when (or key (not has-runner))
+                    (read-key-with-timeout 500)))) ; 500ms timeout to check resize
+      ;; Check for resize again after read returns (signal interrupts read)
+      (let ((resize (check-resize)))
+        (when resize
+          (setf (app-width app) (first resize)
+                (app-height app) (second resize))
+          (app-render app)))
+      ;; If timeout and no runner, just loop (will check resize at top)
+      (when (or key has-runner)
         (when key
           (multiple-value-bind (continue-p dialog-only)
               (app-handle-key app key)
             (unless continue-p
               (setf (app-running-p app) nil)
               (return))
-            ;; Check for terminal resize
-            (let ((new-size (terminal-size)))
-              (when new-size
-                (setf (app-width app) (first new-size)
-                      (app-height app) (second new-size))))
             ;; Re-render - skip full redraw if dialog is handling input
             (unless dialog-only
               (app-render app)))))

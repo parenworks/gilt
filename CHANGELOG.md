@@ -7,11 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-04-15
+
+### Added
+
+- **SIGWINCH terminal resize handling** - UI now redraws automatically when the terminal window is resized
+  - Installs a SIGWINCH signal handler during raw mode
+  - Main loop polls for resize events between keypresses
+  - No manual refresh needed after resize
+- **Lazygit-style repo init prompt** - When launched outside a git repository, prompts to create one instead of crashing
+  - Answers "y" to run `git init` and launch gilt
+  - Answers "n" to exit cleanly
+
+### Fixed
+
+- **macOS terminal size detection** - Use correct TIOCGWINSZ ioctl constant for Darwin (`0x40087468` vs Linux `0x5413`)
+- **Terminal size returning garbage values** - Use `unsigned 16`-bit fields matching `struct winsize` layout, check ioctl return code, add sanity bounds
+- **stty fallback for terminal size** - Added portable `stty size` fallback when ioctl fails, with cross-platform path lookup
+- **Crash when launched outside git repo** - No longer attempts to change directory to empty string
+
 ## [0.15.0] - 2026-02-09
 
 ### Added
 
-- **Line-level staging** — Stage individual lines within a hunk
+- **Line-level staging** - Stage individual lines within a hunk
   - Press `e` on a modified file to enter hunk mode
   - Press `Enter` on a hunk to see individual diff lines
   - `Space` toggles line selection (● selected, ○ unselected)
@@ -19,96 +38,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Enter` stages only the selected lines
   - `Escape` returns to hunk list
   - Builds valid partial patches with corrected line counts
-- **Stash individual files** — Press `S` on files panel to stash selected file(s)
+- **Stash individual files** - Press `S` on files panel to stash selected file(s)
   - Opens dialog for optional stash message
   - Supports untracked files (`--include-untracked`)
   - Works with range selection (`v`) for multiple files
-- **Commit graph** — Press `g` on commits panel to toggle graph view
+- **Commit graph** - Press `g` on commits panel to toggle graph view
   - Shows `git log --graph --oneline --decorate --all` in main panel
   - Toggle on/off with `g` key
-- **Stash diff view** — Main panel shows colored diff when stash panel is focused
-- **Mouse scroll wheel** — Scroll wheel navigates items up/down in focused panel
+- **Stash diff view** - Main panel shows colored diff when stash panel is focused
+- **Mouse scroll wheel** - Scroll wheel navigates items up/down in focused panel
   - SGR mouse tracking enabled (works in terminals that support it)
   - Click support implemented for terminals that pass click events through
 
 ### Fixed
 
-- **Blue bar artifacts on backspace in dialogs** — Old characters now cleared when input text shrinks
-- **Stash individual files failing for untracked files** — Added `--include-untracked` flag
+- **Blue bar artifacts on backspace in dialogs** - Old characters now cleared when input text shrinks
+- **Stash individual files failing for untracked files** - Added `--include-untracked` flag
 
 ## [0.14.0] - 2026-02-09
 
 ### Added
 
-- **Interactive rebase** — Press `i` on commits panel to enter rebase mode
+- **Interactive rebase** - Press `i` on commits panel to enter rebase mode
   - Select a commit to define the range (HEAD to selected)
   - `p` pick, `r` reword, `s` squash, `f` fixup, `d` drop
   - `J`/`K` to reorder commits
   - `Enter` to execute, `q` to cancel
   - Color-coded display for each action type
-- **Rebase branch** — Press `R` on branches panel to rebase current branch onto selected branch
-- **Rename branch** — Press `N` on branches panel to rename a local branch
-- **Fast-forward branch** — Press `F` on branches panel to fast-forward a branch to match upstream
-- **Push tag** — Press `T` in tags view to push a tag (or all tags) to remote
-- **Stage all / unstage all toggle** — `a` key now toggles between staging and unstaging all files
-- **New branch from stash** — Press `B` in stashes view to create a branch from a stash
-- **Commit with editor** — Press `C` on files panel to open `$EDITOR` for commit message
-- **Commit without hook** — Press `w` on files panel to commit bypassing pre-commit hooks
-- **Undo/redo** — Press `z` to undo last git command, `Z` to redo (uses reflog)
-- **Checkout tag** — Press `Space` in tags view to checkout tag as detached HEAD
-- **Rename stash** — Press `R` in stashes view to rename a stash entry
-- **Set upstream** — Press `u` on branches panel to set/unset upstream tracking
-- **Diff context size** — Press `{`/`}` to decrease/increase diff context lines
-- **Whitespace toggle** — Press `W` to toggle whitespace visibility in diffs
-- **Squash merge** — Merge dialog now offers Merge or Squash options
-- **Sort branches** — Press `s` on branches panel to cycle sort: name/date/recent
-- **Bisect** — Press `b` on commits panel to start bisect, then `b`:bad `g`:good `Q`:reset
-- **Search / filter** — Press `/` on files, branches, or stash panels to filter items
-- **Copy to clipboard** — Press `y` to copy file path, branch name, or commit hash
-- **Open in browser** — Press `o` to open commit or branch URL in browser
-- **Shell command** — Press `:` to run arbitrary shell commands (vim-style)
-- **External diff tool** — Press `x` on files panel to launch `git difftool`
-- **Ignore file** — Press `I` on files panel to add file to `.gitignore`
-- **File tree view** — Press `T` on files panel to toggle flat/tree layout
-- **Range select** — Press `v` on files panel to start/end range, stage/unstage range
-- **Page up/down** — `PgUp`/`PgDn` for page navigation in long lists
-- **Enter submodule** — Press `Enter` on submodule to navigate into it as nested repo
-- **Recent repo switching** — Press `L` to show recent repos, Enter to switch
-- **Screen mode cycling** — Press `+` to cycle normal/half/full layout modes
-- **Create pull request** — Press `O` on branches panel to open PR in browser
-- **Git-flow integration** — Press `E` for git-flow menu (feature/release/hotfix)
-- **Custom command keybindings** — Define in `~/.config/gilt/commands.conf` (key=command)
-- **Custom patch building** — `git apply --cached` support for building patches
-- **Force push** — Push dialog now includes Force Push (with lease) option
-- **Context-sensitive hints bar** — Branches panel hints change for Local/Remotes/Tags/Submodules views
-- **ROADMAP.md** — Feature roadmap tracking implemented and planned features
+- **Rebase branch** - Press `R` on branches panel to rebase current branch onto selected branch
+- **Rename branch** - Press `N` on branches panel to rename a local branch
+- **Fast-forward branch** - Press `F` on branches panel to fast-forward a branch to match upstream
+- **Push tag** - Press `T` in tags view to push a tag (or all tags) to remote
+- **Stage all / unstage all toggle** - `a` key now toggles between staging and unstaging all files
+- **New branch from stash** - Press `B` in stashes view to create a branch from a stash
+- **Commit with editor** - Press `C` on files panel to open `$EDITOR` for commit message
+- **Commit without hook** - Press `w` on files panel to commit bypassing pre-commit hooks
+- **Undo/redo** - Press `z` to undo last git command, `Z` to redo (uses reflog)
+- **Checkout tag** - Press `Space` in tags view to checkout tag as detached HEAD
+- **Rename stash** - Press `R` in stashes view to rename a stash entry
+- **Set upstream** - Press `u` on branches panel to set/unset upstream tracking
+- **Diff context size** - Press `{`/`}` to decrease/increase diff context lines
+- **Whitespace toggle** - Press `W` to toggle whitespace visibility in diffs
+- **Squash merge** - Merge dialog now offers Merge or Squash options
+- **Sort branches** - Press `s` on branches panel to cycle sort: name/date/recent
+- **Bisect** - Press `b` on commits panel to start bisect, then `b`:bad `g`:good `Q`:reset
+- **Search / filter** - Press `/` on files, branches, or stash panels to filter items
+- **Copy to clipboard** - Press `y` to copy file path, branch name, or commit hash
+- **Open in browser** - Press `o` to open commit or branch URL in browser
+- **Shell command** - Press `:` to run arbitrary shell commands (vim-style)
+- **External diff tool** - Press `x` on files panel to launch `git difftool`
+- **Ignore file** - Press `I` on files panel to add file to `.gitignore`
+- **File tree view** - Press `T` on files panel to toggle flat/tree layout
+- **Range select** - Press `v` on files panel to start/end range, stage/unstage range
+- **Page up/down** - `PgUp`/`PgDn` for page navigation in long lists
+- **Enter submodule** - Press `Enter` on submodule to navigate into it as nested repo
+- **Recent repo switching** - Press `L` to show recent repos, Enter to switch
+- **Screen mode cycling** - Press `+` to cycle normal/half/full layout modes
+- **Create pull request** - Press `O` on branches panel to open PR in browser
+- **Git-flow integration** - Press `E` for git-flow menu (feature/release/hotfix)
+- **Custom command keybindings** - Define in `~/.config/gilt/commands.conf` (key=command)
+- **Custom patch building** - `git apply --cached` support for building patches
+- **Force push** - Push dialog now includes Force Push (with lease) option
+- **Context-sensitive hints bar** - Branches panel hints change for Local/Remotes/Tags/Submodules views
+- **ROADMAP.md** - Feature roadmap tracking implemented and planned features
 
 ### Fixed
 
-- **ESC key not working** — Fixed escape key handling for closing overlays and dialogs
-- **Arrow keys not working** — Fixed arrow key input handling across all panels
-- **`w` key cycling wrong panel** — Fixed `w` to cycle Files/Worktrees/Stashes on files panel (was on commits panel)
-- **Staged files not visually distinct** — Staged files now display in green
-- **Key handlers consuming keys for wrong panels** — Systematic fix of panel guards on all key handlers to prevent keys from being swallowed by the wrong panel's handler
-- **`x` (difftool) crash** — Fixed undefined function error for alternate screen functions
-- **Browser URL wrong for SSH host aliases** — Resolves SSH host aliases (e.g., `github-parenworks` → `github.com`) via `~/.ssh/config`
-- **`X`, `F`, `C`, `R` not working on commits panel** — Earlier handlers for other panels were consuming these keys
-- **`g` (bisect good) not working** — Stash pop handler was consuming the key on commits panel
-- **`o` (resolve conflict ours) not working** — Merged conflict resolution and open-in-browser into single context-sensitive handler
-- **`A` (add remote) not working in remotes view** — Add Worktree handler lacked panel guard
-- **`R` (rename remote) not working in remotes view** — Rebase handler consumed key in remotes view
-- **Git Flow dialog buttons overflow** — Dialog width now accounts for total button width
-- **Screen resize (`+`) crash** — Fixed `UNSIGNED-BYTE -1` error from negative dimensions in draw functions
-- **Copy file path only copying filename** — Now copies full path (repo root + relative path)
-- **Shell command output staggered** — Multi-line output now split into individual log lines
-- **D key not working on branches panel** — Duplicate key handler made branch/tag/remote deletion unreachable; merged into single dispatcher
-- **Duplicate function definitions** — Removed old `git-stash-list` and `git-stash-pop` that were superseded by enhanced versions
+- **ESC key not working** - Fixed escape key handling for closing overlays and dialogs
+- **Arrow keys not working** - Fixed arrow key input handling across all panels
+- **`w` key cycling wrong panel** - Fixed `w` to cycle Files/Worktrees/Stashes on files panel (was on commits panel)
+- **Staged files not visually distinct** - Staged files now display in green
+- **Key handlers consuming keys for wrong panels** - Systematic fix of panel guards on all key handlers to prevent keys from being swallowed by the wrong panel's handler
+- **`x` (difftool) crash** - Fixed undefined function error for alternate screen functions
+- **Browser URL wrong for SSH host aliases** - Resolves SSH host aliases (e.g., `github-parenworks` to `github.com`) via `~/.ssh/config`
+- **`X`, `F`, `C`, `R` not working on commits panel** - Earlier handlers for other panels were consuming these keys
+- **`g` (bisect good) not working** - Stash pop handler was consuming the key on commits panel
+- **`o` (resolve conflict ours) not working** - Merged conflict resolution and open-in-browser into single context-sensitive handler
+- **`A` (add remote) not working in remotes view** - Add Worktree handler lacked panel guard
+- **`R` (rename remote) not working in remotes view** - Rebase handler consumed key in remotes view
+- **Git Flow dialog buttons overflow** - Dialog width now accounts for total button width
+- **Screen resize (`+`) crash** - Fixed `UNSIGNED-BYTE -1` error from negative dimensions in draw functions
+- **Copy file path only copying filename** - Now copies full path (repo root + relative path)
+- **Shell command output staggered** - Multi-line output now split into individual log lines
+- **D key not working on branches panel** - Duplicate key handler made branch/tag/remote deletion unreachable; merged into single dispatcher
+- **Duplicate function definitions** - Removed old `git-stash-list` and `git-stash-pop` that were superseded by enhanced versions
 
 ## [0.13.0] - 2026-02-07
 
 ### Changed
 
-- **Terminal control via FFI** — Replaced all `stty` subprocess calls with direct POSIX termios FFI
+- **Terminal control via FFI** - Replaced all `stty` subprocess calls with direct POSIX termios FFI
   - Uses `sb-posix:tcgetattr`/`tcsetattr` for raw mode control
   - Uses `sb-alien` ioctl with `TIOCGWINSZ` for terminal size queries
   - Eliminates `stty` dependency entirely (fixes NixOS, containers, non-standard paths)
@@ -120,7 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `*stty-path*` parameter and `GILT_STTY_PATH` environment variable (no longer needed)
 - `find-stty`, `find-tty`, `detect-terminal-type` utility functions (replaced by FFI)
-- `NIXOS_SUPPORT.md` — no longer needed since stty dependency is eliminated
+- `NIXOS_SUPPORT.md` - no longer needed since stty dependency is eliminated
 
 ## [0.12.0] - 2026-02-04
 
@@ -231,7 +250,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Branch tracking info (ahead/behind upstream)
   - Repository state indicator (MERGING, REBASING, etc.)
 
-[Unreleased]: https://github.com/parenworks/gilt/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/parenworks/gilt/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/parenworks/gilt/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/parenworks/gilt/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/parenworks/gilt/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/parenworks/gilt/releases/tag/v0.13.0

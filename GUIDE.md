@@ -380,11 +380,11 @@ Rewrite commit history with full control over each commit:
 3. Press `i` to enter interactive rebase mode
 4. The panel title changes to show available actions
 5. For each commit, press a key to set its action:
-   - `p` — **pick** (keep commit as-is)
-   - `r` — **reword** (change commit message, opens input dialog)
-   - `s` — **squash** (combine with previous commit, not available on first)
-   - `f` — **fixup** (like squash but discard this commit's message)
-   - `d` — **drop** (remove commit entirely)
+   - `p` - **pick** (keep commit as-is)
+   - `r` - **reword** (change commit message, opens input dialog)
+   - `s` - **squash** (combine with previous commit, not available on first)
+   - `f` - **fixup** (like squash but discard this commit's message)
+   - `d` - **drop** (remove commit entirely)
 6. Use `J`/`K` (capital) to **reorder** commits
 7. Press `Enter` to execute the rebase, or `q` to cancel
 
@@ -427,7 +427,7 @@ Temporarily save your changes:
 Use binary search to find which commit introduced a bug:
 
 1. Navigate to the **Commits panel** (`Tab` or press `4`)
-2. Press `b` to start bisect — marks the selected commit as **bad**
+2. Press `b` to start bisect - marks the selected commit as **bad**
 3. Navigate to a known good commit and press `g` to mark it as **good**
 4. Git will checkout a commit halfway between good and bad
 5. Test the code, then press `b` (bad) or `g` (good) to continue narrowing

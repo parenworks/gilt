@@ -177,6 +177,29 @@
 
 (defparameter *terminal-mode* (make-instance 'terminal-mode))
 
+;;; SIGWINCH signal handler for terminal resize
+
+(defparameter *resize-pending* nil
+  "Flag set to T by SIGWINCH handler when terminal is resized")
+
+(defun install-sigwinch-handler ()
+  "Install a SIGWINCH signal handler to detect terminal resizes."
+  (sb-sys:enable-interrupt
+   sb-unix:sigwinch
+   (lambda (signal info context)
+     (declare (ignore signal info context))
+     (setf *resize-pending* t))))
+
+(defun uninstall-sigwinch-handler ()
+  "Restore default SIGWINCH handling."
+  (sb-sys:enable-interrupt sb-unix:sigwinch :default))
+
+(defun check-resize ()
+  "Check if a resize occurred and return new (width height) or nil."
+  (when *resize-pending*
+    (setf *resize-pending* nil)
+    (terminal-size)))
+
 ;;; Convenience functions
 
 (defun terminal-size ()
@@ -209,10 +232,12 @@
      (enter-alternate-screen)
      (enable-raw-mode *terminal-mode*)
      (enable-mouse-tracking)
+     (install-sigwinch-handler)
      (cursor-hide)
      (unwind-protect
           (progn ,@body)
        (close-tty-stream)
+       (uninstall-sigwinch-handler)
        (disable-mouse-tracking)
        (cursor-show)
        (disable-raw-mode *terminal-mode*)

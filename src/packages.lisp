@@ -97,6 +97,11 @@
             #:read-key-event
             #:read-byte-with-timeout
             #:*input-reader*
+            ;; SIGWINCH resize handling
+            #:*resize-pending*
+            #:install-sigwinch-handler
+            #:uninstall-sigwinch-handler
+            #:check-resize
             ;; Convenience functions
             #:with-raw-terminal
             #:terminal-size
