@@ -22,12 +22,17 @@ jobs:
           - os: ubuntu-latest
             arch: linux-x86_64
             install_sbcl: sudo apt-get update && sudo apt-get install -y sbcl make
-          - os: macos-14
+            run_prefix: ""
+          - os: macos-latest
             arch: darwin-arm64
             install_sbcl: brew install sbcl
-          - os: macos-13
+            run_prefix: ""
+          - os: macos-latest
             arch: darwin-x86_64
-            install_sbcl: brew install sbcl
+            install_sbcl: |
+              arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+              arch -x86_64 /usr/local/bin/brew install sbcl
+            run_prefix: "arch -x86_64"
 
     runs-on: ${{ matrix.os }}
 
@@ -43,19 +48,19 @@ jobs:
       - name: Install Quicklisp
         run: |
           curl -O https://beta.quicklisp.org/quicklisp.lisp
-          sbcl --non-interactive \
+          ${{ matrix.run_prefix }} sbcl --non-interactive \
                --load quicklisp.lisp \
                --eval '(quicklisp-quickstart:install)' \
                --eval '(quit)'
 
       - name: Build binary
-        run: make build
+        run: ${{ matrix.run_prefix }} make build
 
       - name: Verify binary
         run: |
           test -f gilt
           chmod +x gilt
-          ./gilt --version
+          ${{ matrix.run_prefix }} ./gilt --version
 
       - name: Set tag name
         id: tag
