@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-04-16
+
+### Added
+
+- **Multi-arch CI release builds** - GitHub Actions now builds binaries for Linux x86_64, macOS arm64, and macOS x86_64
+  - Triggered automatically on tag push or manually via workflow dispatch
+  - macOS x86_64 built via Rosetta on arm64 runner
+
+### Fixed
+
+- **Pre-built binaries not accepting keyboard input on macOS** - CI-built saved images had stale terminal state baked in from the build environment
+  - All terminal state now deferred to runtime initialization
+  - Raw mode and ioctl use an explicit `/dev/tty` fd opened at runtime instead of relying on SBCL's internal `sb-sys:*stdin*`
+  - TTY path, escape timeout, terminal mode, and input reader all initialized fresh on startup
+
 ## [0.16.0] - 2026-04-15
 
 ### Added
@@ -250,7 +265,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Branch tracking info (ahead/behind upstream)
   - Repository state indicator (MERGING, REBASING, etc.)
 
-[Unreleased]: https://github.com/parenworks/gilt/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/parenworks/gilt/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/parenworks/gilt/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/parenworks/gilt/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/parenworks/gilt/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/parenworks/gilt/compare/v0.13.0...v0.14.0

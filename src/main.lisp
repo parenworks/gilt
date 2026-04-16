@@ -8,7 +8,7 @@
 ;;; - MAJOR: incompatible API changes
 ;;; - MINOR: new functionality (backwards compatible)
 ;;; - PATCH: bug fixes (backwards compatible)
-(defparameter *version* "0.16.0"
+(defparameter *version* "0.17.0"
   "Gilt version number")
 
 ;;; Application class - encapsulates all application state
@@ -172,16 +172,16 @@
 
 (defun main ()
   "Main entry point for executable"
-  ;; Initialize terminal subsystem at runtime (not baked into saved image)
-  (gilt.terminal:initialize-terminal)
   (let ((args (uiop:command-line-arguments)))
+    ;; Handle --version before terminal init (no TTY needed, works in CI)
+    (when (or (member "--version" args :test #'string=)
+              (member "-v" args :test #'string=))
+      (format t "gilt version ~A~%" *version*)
+      (finish-output)
+      (sb-ext:exit :code 0))
+    ;; Initialize terminal subsystem at runtime (not baked into saved image)
+    (gilt.terminal:initialize-terminal)
     (cond
-      ;; Version flag
-      ((or (member "--version" args :test #'string=)
-           (member "-v" args :test #'string=))
-       (format t "gilt version ~A~%" *version*)
-       (finish-output)
-       (sb-ext:exit :code 0))
       ;; Debug flag - run diagnostics using FFI termios
       ((member "--debug" args :test #'string=)
        (let ((tty-path (namestring gilt.terminal:*tty-path*)))
