@@ -76,6 +76,11 @@
 (defvar *escape-timeout* nil
   "Escape sequence timeout in seconds. Initialized at runtime.")
 
+(defvar *tty-fd* nil
+  "Raw file descriptor for /dev/tty, opened at runtime via sb-posix:open.
+   Used for raw mode and ioctl instead of sb-sys:*stdin* which may not be
+   properly connected to the terminal in CI-built saved images.")
+
 ;;; Terminal mode controller class
 
 (defclass terminal-mode ()
@@ -95,7 +100,7 @@
 (defmethod enable-raw-mode ((mode terminal-mode))
   (unless (terminal-raw-p mode)
     (handler-case
-        (let* ((fd (sb-sys:fd-stream-fd sb-sys:*stdin*))
+        (let* ((fd *tty-fd*)
                (orig (sb-posix:tcgetattr fd))
                (raw (sb-posix:tcgetattr fd)))
           ;; Save original for restore
@@ -128,7 +133,7 @@
     (handler-case
         (let ((saved (terminal-original-settings mode)))
           (when saved
-            (sb-posix:tcsetattr (sb-sys:fd-stream-fd sb-sys:*stdin*)
+            (sb-posix:tcsetattr *tty-fd*
                                 sb-posix:tcsaflush saved)))
       (error (e)
         (warn "Failed to disable raw mode: ~A" e)))
@@ -147,7 +152,7 @@
                     (sb-alien:extern-alien "ioctl"
                                            (function sb-alien:int sb-alien:int
                                                      sb-alien:unsigned-long (* t)))
-                    (sb-sys:fd-stream-fd sb-sys:*stdin*)
+                    *tty-fd*
                     *tiocgwinsz*
                     (sb-alien:addr (sb-alien:deref ws 0)))))
           (when (zerop ret)
@@ -450,6 +455,7 @@
   "Initialize terminal subsystem at runtime. Must be called before any terminal operations."
   (setf *tty-path* (find-tty-path))
   (setf *escape-timeout* (compute-escape-timeout))
+  (setf *tty-fd* (sb-posix:open *tty-path* sb-posix:o-rdwr))
   (setf *terminal-mode* (make-instance 'terminal-mode))
   (setf *input-reader* (make-instance 'input-reader)))
 

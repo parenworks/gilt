@@ -90,6 +90,7 @@
             ;; Configuration
             #:wait-for-escape-sequence
             #:*tty-path*
+            #:*tty-fd*
             #:*escape-timeout*
             ;; Input reader class
             #:input-reader
