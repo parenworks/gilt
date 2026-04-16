@@ -172,6 +172,8 @@
 
 (defun main ()
   "Main entry point for executable"
+  ;; Initialize terminal subsystem at runtime (not baked into saved image)
+  (gilt.terminal:initialize-terminal)
   (let ((args (uiop:command-line-arguments)))
     (cond
       ;; Version flag

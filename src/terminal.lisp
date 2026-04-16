@@ -47,7 +47,8 @@
 
 (require :sb-posix)
 
-(defparameter *tty-path*
+(defun find-tty-path ()
+  "Find a suitable TTY device path for input."
   (or (sb-ext:posix-getenv "GILT_TTY_PATH")
       (let ((candidates '("/dev/tty" "/dev/pts/0" "/dev/console" "/dev/tty0")))
         (loop for path in candidates
@@ -55,7 +56,11 @@
               return path
               finally (return "/dev/tty")))))
 
-(defparameter *escape-timeout*
+(defvar *tty-path* nil
+  "TTY device path for input. Initialized at runtime.")
+
+(defun compute-escape-timeout ()
+  "Compute escape timeout based on environment."
   (or (ignore-errors 
         (let ((timeout-str (sb-ext:posix-getenv "GILT_ESCAPE_TIMEOUT")))
           (when timeout-str 
@@ -67,6 +72,9 @@
           (alacritty-socket 0.01)
           ((and term (search "alacritty" term)) 0.01)
           (t 0.02)))))
+
+(defvar *escape-timeout* nil
+  "Escape sequence timeout in seconds. Initialized at runtime.")
 
 ;;; Terminal mode controller class
 
@@ -175,7 +183,8 @@
 
 ;;; Global terminal mode instance
 
-(defparameter *terminal-mode* (make-instance 'terminal-mode))
+(defvar *terminal-mode* nil
+  "Global terminal mode instance. Initialized at runtime.")
 
 ;;; SIGWINCH signal handler for terminal resize
 
@@ -434,8 +443,15 @@
         (make-key-event :char (code-char byte))))))
 
 ;;; Global input reader instance
-(defparameter *input-reader* (make-instance 'input-reader)
-  "Global input reader for keyboard events")
+(defvar *input-reader* nil
+  "Global input reader for keyboard events. Initialized at runtime.")
+
+(defun initialize-terminal ()
+  "Initialize terminal subsystem at runtime. Must be called before any terminal operations."
+  (setf *tty-path* (find-tty-path))
+  (setf *escape-timeout* (compute-escape-timeout))
+  (setf *terminal-mode* (make-instance 'terminal-mode))
+  (setf *input-reader* (make-instance 'input-reader)))
 
 (defun close-tty-stream ()
   "Close the TTY stream"

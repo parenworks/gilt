@@ -102,6 +102,8 @@
             #:install-sigwinch-handler
             #:uninstall-sigwinch-handler
             #:check-resize
+            ;; Runtime initialization
+            #:initialize-terminal
             ;; Convenience functions
             #:with-raw-terminal
             #:terminal-size
