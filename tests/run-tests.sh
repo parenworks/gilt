@@ -808,6 +808,80 @@ else
     fail "Layout functions: '$LAYOUTS' (expected 'Y Y')"
 fi
 
+# ─── Phase 4 Feature Tests ──────────────────────────────────────
+section "Phase 4: Theming / Update Checker / Rename Threshold"
+
+# Test theme loading from file
+THEME_FILE="/tmp/gilt-test-theme-$$.conf"
+cat > "$THEME_FILE" <<'EOF'
+# Test theme
+diff-add=42
+staged=28
+EOF
+
+THEME_RESULT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (gilt.ansi:load-theme-file \"$THEME_FILE\")
+            (format t \"~D ~D\"
+              (gilt.ansi:color-code :diff-add)
+              (gilt.ansi:color-code :staged)))" \
+  2>/dev/null | tail -1)
+rm -f "$THEME_FILE"
+
+if [ "$THEME_RESULT" = "42 28" ]; then
+    pass "Theme loading overrides colors correctly (diff-add=42, staged=28)"
+else
+    fail "Theme loading returned: '$THEME_RESULT' (expected '42 28')"
+fi
+
+# Test load-user-theme function exists
+THEME_FN=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(format t \"~A\" (if (fboundp 'gilt.ansi:load-user-theme) \"Y\" \"N\"))" \
+  2>/dev/null | tail -1)
+
+if [ "$THEME_FN" = "Y" ]; then
+    pass "load-user-theme function exists"
+else
+    fail "load-user-theme: '$THEME_FN' (expected 'Y')"
+fi
+
+# Test check-for-updates function exists
+UPDATE_FN=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(format t \"~A ~A\"
+            (if (fboundp 'gilt.git:check-for-updates) \"Y\" \"N\")
+            gilt.git:*github-repo*)" \
+  2>/dev/null | tail -1)
+
+if [ "$UPDATE_FN" = "Y parenworks/gilt" ]; then
+    pass "check-for-updates exists, repo=parenworks/gilt"
+else
+    fail "Update checker returned: '$UPDATE_FN' (expected 'Y parenworks/gilt')"
+fi
+
+# Test rename threshold controls
+RENAME=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (format t \"~A\" gilt.git:*rename-threshold*)
+            (setf gilt.git:*rename-threshold* 50)
+            (format t \" ~A\" (gilt.git:rename-threshold-arg))
+            (setf gilt.git:*rename-threshold* nil)
+            (format t \" ~A\" (gilt.git:rename-threshold-arg)))" \
+  2>/dev/null | tail -1)
+
+if [ "$RENAME" = "NIL -M50% NIL" ]; then
+    pass "Rename threshold: default nil, arg=-M50%, nil when off"
+else
+    fail "Rename threshold returned: '$RENAME' (expected 'NIL -M50% NIL')"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════"

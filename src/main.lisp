@@ -163,6 +163,8 @@
       ;; Background auto-refresh and auto-fetch (on timeout, no key pressed)
       (when (and view (null key) (not has-runner))
         (let ((refreshed nil))
+          ;; Check background update result
+          (gilt.views::check-update-result view)
           ;; Check/start background fetch
           (when (gilt.views::maybe-auto-fetch view)
             (setf refreshed t))
@@ -197,6 +199,8 @@
   "Entry point - run Gilt"
   ;; Check for git repo before entering raw mode (so prompt works normally)
   (gilt.git:ensure-repo)
+  ;; Load user theme overrides before UI starts
+  (gilt.ansi:load-user-theme)
   (with-raw-terminal
     (setf *app* (make-instance 'application))
     (app-init *app*)

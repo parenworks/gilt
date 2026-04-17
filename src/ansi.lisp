@@ -77,6 +77,39 @@
 (register-color :unstaged 160)
 (register-color :untracked 245)
 
+;;; Theme loading
+;;; Override colors from ~/.config/gilt/theme.conf
+;;; Format: name=index (one per line), e.g. "diff-add=40" or "staged=28"
+;;; Lines starting with # are comments. Names match color keywords without the colon.
+
+(defun load-theme-file (path)
+  "Load color overrides from a theme config file.
+   Format: name=index per line. Comments start with #."
+  (when (probe-file path)
+    (with-open-file (s path :direction :input :if-does-not-exist nil)
+      (when s
+        (loop for line = (read-line s nil nil)
+              while line
+              for trimmed = (string-trim '(#\Space #\Tab #\Return) line)
+              when (and (> (length trimmed) 0)
+                        (char/= (char trimmed 0) #\#))
+              do (let ((pos (position #\= trimmed)))
+                   (when pos
+                     (let* ((name-str (string-trim '(#\Space #\Tab)
+                                                   (subseq trimmed 0 pos)))
+                            (val-str (string-trim '(#\Space #\Tab)
+                                                  (subseq trimmed (1+ pos))))
+                            (name-key (intern (string-upcase name-str) :keyword))
+                            (index (ignore-errors (parse-integer val-str :junk-allowed t))))
+                       (when (and name-key index (<= 0 index 255))
+                         (register-color name-key index))))))))))
+
+(defun load-user-theme ()
+  "Load the user's theme from ~/.config/gilt/theme.conf if it exists."
+  (let ((theme-file (merge-pathnames ".config/gilt/theme.conf"
+                                     (user-homedir-pathname))))
+    (load-theme-file theme-file)))
+
 ;;; Generic functions for color output
 
 (defgeneric emit-fg (color stream)

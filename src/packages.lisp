@@ -69,7 +69,11 @@
            #:underline
            #:inverse
            #:color-code
-           #:with-style))
+           #:with-style
+           ;; Theme loading
+           #:load-theme-file
+           #:load-user-theme
+           #:*color-palette*))
 
 (defpackage #:gilt.terminal
    (:use #:cl #:gilt.ansi)
@@ -422,7 +426,13 @@
            #:git-rebase-abort
            #:git-rebase-continue
            #:git-rebase-skip
-           #:git-rebase-onto))
+           #:git-rebase-onto
+           ;; Update checker
+           #:*github-repo*
+           #:check-for-updates
+           ;; Rename similarity threshold
+           #:*rename-threshold*
+           #:rename-threshold-arg))
 
 (defpackage #:gilt.pty
   (:use #:cl)

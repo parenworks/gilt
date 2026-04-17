@@ -81,6 +81,38 @@
           (reset)
           (finish-output *terminal-io*)))))
 
+;;; Update checker
+;;; Runs check-for-updates in background thread on startup, shows toast if newer version.
+
+(defvar *update-check-result* nil
+  "Result of background update check: nil (pending), (:ok version) or :done.")
+
+(defun start-update-check (view)
+  "Start a background update check. Shows a toast if a newer version is available."
+  (declare (ignore view))
+  (setf *update-check-result* nil)
+  (sb-thread:make-thread
+   (lambda ()
+     (handler-case
+         (let ((version (when (find-package :gilt)
+                          (symbol-value (find-symbol "*VERSION*" :gilt)))))
+           (when version
+             (multiple-value-bind (newer-p latest)
+                 (gilt.git:check-for-updates version)
+               (if (and newer-p latest)
+                   (setf *update-check-result* (list :ok latest))
+                   (setf *update-check-result* :done)))))
+       (error () (setf *update-check-result* :done))))
+   :name "gilt-update-check"))
+
+(defun check-update-result (view)
+  "Check if the background update check completed. Show toast if update available."
+  (when (and (consp *update-check-result*)
+             (eq (first *update-check-result*) :ok))
+    (let ((latest (second *update-check-result*)))
+      (show-toast view (format nil "Update available: v~A" latest) 5)
+      (setf *update-check-result* :done))))
+
 ;;; Credential prompting
 ;;; Detect when git asks for username, password, or passphrase and show a dialog.
 
@@ -455,6 +487,8 @@
               (main-panel view)))
   ;; Initialize auto-refresh and auto-fetch from config
   (init-auto-refresh view)
+  ;; Background update check
+  (start-update-check view)
   (refresh-data view))
 
 (defun log-command (view cmd)
@@ -1310,6 +1344,8 @@
                        "   }          Increase diff context lines"
                        "   {          Decrease diff context lines"
                        "   W          Toggle whitespace in diffs"
+                       "   )          Increase rename threshold (+10%)"
+                       "   (          Decrease rename threshold (-10%, off at 0)"
                        "              Custom pager: GILT_PAGER env or git config gilt.pager"
                        ""
                        " CUSTOM PATCH BUILDER"
@@ -1328,6 +1364,16 @@
                        "              Auto-fetch: git config gilt.autofetch true"
                        "              Interval:   git config gilt.fetchinterval <secs> (default 60)"
                        "              Env vars:   GILT_AUTO_FETCH, GILT_FETCH_INTERVAL, GILT_REFRESH_INTERVAL"
+                       ""
+                       " THEMING"
+                       "              Color overrides: ~/.config/gilt/theme.conf"
+                       "              Format: name=index (0-255), e.g. diff-add=40"
+                       "              Names: diff-add, diff-remove, diff-header, diff-hunk,"
+                       "              staged, unstaged, untracked, cyan, green, red, etc."
+                       ""
+                       " UPDATE CHECKER"
+                       "              Checks GitHub releases on startup (background)"
+                       "              Toast notification if newer version available"
                        ""
                        " NERD FONTS"
                        "              GILT_NERD_FONTS=1 or git config gilt.nerdfonts true"
@@ -3731,6 +3777,26 @@
                                   (if (diff-ignore-whitespace view) "ignored" "shown")))
        (show-toast view (format nil "Whitespace: ~A"
                                  (if (diff-ignore-whitespace view) "ignored" "shown")))
+       (update-main-content view)
+       nil)
+      ;; Rename threshold - ')' increase, '(' decrease (global)
+      ((and (key-event-char key) (char= (key-event-char key) #\)))
+       (let ((current (or *rename-threshold* 50)))
+         (setf *rename-threshold* (min 100 (+ current 10)))
+         (log-command view (format nil "Rename threshold: ~D%" *rename-threshold*))
+         (show-toast view (format nil "Rename threshold: ~D%" *rename-threshold*))
+         (update-main-content view))
+       nil)
+      ((and (key-event-char key) (char= (key-event-char key) #\())
+       (if (and *rename-threshold* (<= *rename-threshold* 10))
+           (progn
+             (setf *rename-threshold* nil)
+             (log-command view "Rename threshold: off (git default)")
+             (show-toast view "Rename threshold: off"))
+           (let ((current (or *rename-threshold* 50)))
+             (setf *rename-threshold* (max 10 (- current 10)))
+             (log-command view (format nil "Rename threshold: ~D%" *rename-threshold*))
+             (show-toast view (format nil "Rename threshold: ~D%" *rename-threshold*))))
        (update-main-content view)
        nil)
       ;; Rename stash - 'R' (capital, when on files panel in stashes view)

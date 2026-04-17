@@ -217,6 +217,7 @@
   (let ((args (list "diff" "--color=always"
                     (format nil "-U~D" context-size))))
     (when ignore-whitespace (push "-w" (cdr (last args))))
+    (when *rename-threshold* (push (rename-threshold-arg) (cdr (last args))))
     (if file
         (apply #'git-run (append args (list "--" file)))
         (apply #'git-run args))))
@@ -226,6 +227,7 @@
   (let ((args (list "diff" "--cached" "--color=always"
                     (format nil "-U~D" context-size))))
     (when ignore-whitespace (push "-w" (cdr (last args))))
+    (when *rename-threshold* (push (rename-threshold-arg) (cdr (last args))))
     (if file
         (apply #'git-run (append args (list "--" file)))
         (apply #'git-run args))))
@@ -236,6 +238,7 @@
                     (format nil "-U~D" context-size)
                     ref-a ref-b)))
     (when ignore-whitespace (push "-w" (cdr (last args))))
+    (when *rename-threshold* (push (rename-threshold-arg) (cdr (last args))))
     (apply #'git-run args)))
 
 (defun git-diff-refs-stat (ref-a ref-b)
@@ -1828,3 +1831,53 @@ Returns alist of (char . command-string)."
         (if (zerop exit)
             "Patch applied successfully"
             (format nil "Patch failed: ~A" (string-trim '(#\Newline) err)))))))
+
+;;; Update checker
+;;; Check GitHub releases for newer versions of Gilt.
+
+(defparameter *github-repo* "parenworks/gilt"
+  "GitHub repository for update checking.")
+
+(defun check-for-updates (current-version)
+  "Check GitHub for newer releases. Returns (values newer-version-p latest-version)
+   or (values nil nil) on error. Uses curl to avoid extra dependencies."
+  (handler-case
+      (let* ((url (format nil "https://api.github.com/repos/~A/releases/latest" *github-repo*))
+             (proc (sb-ext:run-program "curl"
+                                       (list "-s" "-m" "5"
+                                             "-H" "Accept: application/vnd.github.v3+json"
+                                             url)
+                                       :output :stream
+                                       :error nil
+                                       :search t
+                                       :wait t))
+             (output (with-output-to-string (s)
+                       (loop for line = (read-line (sb-ext:process-output proc) nil nil)
+                             while line do (write-line line s))))
+             (exit (sb-ext:process-exit-code proc)))
+        (when (zerop exit)
+          ;; Extract tag_name from JSON (simple pattern match, no JSON library needed)
+          (let ((tag-pos (search "\"tag_name\"" output)))
+            (when tag-pos
+              (let* ((colon-pos (position #\: output :start tag-pos))
+                     (quote1 (position #\" output :start (1+ colon-pos)))
+                     (quote2 (position #\" output :start (1+ quote1))))
+                (when (and quote1 quote2)
+                  (let ((tag (subseq output (1+ quote1) quote2)))
+                    ;; Strip leading 'v' if present
+                    (let ((latest (if (and (> (length tag) 0) (char= (char tag 0) #\v))
+                                      (subseq tag 1)
+                                      tag)))
+                      (values (string/= latest current-version)
+                              latest)))))))))
+    (error () (values nil nil))))
+
+;;; Rename similarity threshold
+
+(defparameter *rename-threshold* nil
+  "Git rename detection threshold (0-100). nil means use git default.")
+
+(defun rename-threshold-arg ()
+  "Return the -M<threshold> argument string if threshold is set, or nil."
+  (when *rename-threshold*
+    (format nil "-M~D%" *rename-threshold*)))
