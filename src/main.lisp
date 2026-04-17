@@ -95,12 +95,15 @@
         (setf (app-width app) (first resize)
               (app-height app) (second resize))
         (app-render app)))
-    ;; Check if current view has an active runner - use timeout if so
+    ;; Check if current view has an active runner or toast - use timeout if so
     (let* ((view (app-current-view app))
            (has-runner (and view 
                             (slot-boundp view 'gilt.views::active-runner)
                             (slot-value view 'gilt.views::active-runner)))
-           (key (if has-runner
+           (has-toast (and view
+                           (slot-boundp view 'gilt.views::toast-message)
+                           (slot-value view 'gilt.views::toast-message)))
+           (key (if (or has-runner has-toast)
                     (read-key-with-timeout 100)  ; 100ms timeout for polling
                     (read-key-with-timeout 500)))) ; 500ms timeout to check resize
       ;; Check for resize again after read returns (signal interrupts read)
@@ -138,7 +141,11 @@
                                             (gilt.pty:runner-exit-code current-runner))
                                     "Press any key to continue...")
                               (list "" (slot-value view 'gilt.views::runner-title))))))
-          (app-render app))))))
+          (app-render app)))
+      ;; Check if toast expired and needs re-render
+      (when (and has-toast (null key)
+                 (gilt.views::toast-expired-p view))
+        (app-render app)))))
 
 ;;; Global application instance
 (defparameter *app* nil "The current Gilt application instance")

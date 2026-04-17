@@ -257,6 +257,10 @@
            #:git-stage-hunk
            #:git-stage-lines
            #:build-partial-patch
+           #:git-commit-files
+           #:git-commit-diff
+           #:git-diff-refs
+           #:git-diff-refs-stat
            #:git-stash
            #:git-stash-pop
            #:git-stash-list
@@ -272,6 +276,7 @@
            #:git-commit-set-author
            #:git-commit-add-coauthor
            #:git-create-branch
+           #:git-move-commits-to-new-branch
            #:git-rename-branch
            #:git-fast-forward
            #:git-unstage-all

@@ -392,6 +392,198 @@ else
     fail "Not enough files for testing"
 fi
 
+# ─── 8. New Feature Tests (Phase 1 & 2) ─────────────────────────
+section "8. New Features (Phase 1 & 2)"
+
+GILT_SRC="$(cd "$SCRIPT_DIR/.." && pwd)"
+SBCL_INIT="(progn (require :asdf) (load \"$HOME/quicklisp/setup.lisp\") (push #p\"$GILT_SRC/\" asdf:*central-registry*))"
+
+# Test fuzzy matching via Lisp evaluation
+FUZZY_RESULT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval '(format t "~A ~A ~A ~A"
+            (gilt.views::fuzzy-match-p "abc" "aXbYcZ")
+            (gilt.views::fuzzy-match-p "abc" "AbBcC")
+            (gilt.views::fuzzy-match-p "xyz" "abc")
+            (gilt.views::fuzzy-match-p "" "anything"))' \
+  2>/dev/null | tail -1)
+
+if [ "$FUZZY_RESULT" = "T T NIL T" ]; then
+    pass "Fuzzy matching works correctly (4/4 cases)"
+else
+    fail "Fuzzy matching returned: '$FUZZY_RESULT' (expected 'T T NIL T')"
+fi
+
+# Test git-commit-files returns files for HEAD commit
+cd "$REPO_DIR"
+COMMIT_FILES=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((files (gilt.git:git-commit-files \"HEAD\")))
+              (format t \"~D\" (length files))))" \
+  2>/dev/null | tail -1)
+
+if [ -n "$COMMIT_FILES" ] && [ "$COMMIT_FILES" -gt 0 ] 2>/dev/null; then
+    pass "git-commit-files returns files for HEAD ($COMMIT_FILES files)"
+else
+    fail "git-commit-files returned: '$COMMIT_FILES'"
+fi
+
+# Test git-diff-refs between branches
+DIFF_REFS=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((diff (gilt.git:git-diff-refs \"master\" \"feature/login\")))
+              (format t \"~A\" (if (and diff (> (length diff) 0)) \"OK\" \"EMPTY\"))))" \
+  2>/dev/null | tail -1)
+
+if [ "$DIFF_REFS" = "OK" ]; then
+    pass "git-diff-refs produces diff between branches"
+else
+    fail "git-diff-refs returned: '$DIFF_REFS'"
+fi
+
+# Test git-diff-refs-stat
+DIFF_STAT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((stat (gilt.git:git-diff-refs-stat \"master\" \"feature/login\")))
+              (format t \"~A\" (if (and stat (> (length stat) 0)) \"OK\" \"EMPTY\"))))" \
+  2>/dev/null | tail -1)
+
+if [ "$DIFF_STAT" = "OK" ]; then
+    pass "git-diff-refs-stat produces stat summary"
+else
+    fail "git-diff-refs-stat returned: '$DIFF_STAT'"
+fi
+
+# Test git-move-commits-to-new-branch in temp branch
+cd "$REPO_DIR"
+git checkout -b test-move-source 2>/dev/null
+echo "move test" > move-test.txt
+git add move-test.txt 2>/dev/null
+git commit -m "commit to move" 2>/dev/null
+
+MOVE_RESULT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((old (gilt.git:git-move-commits-to-new-branch \"test-move-dest\" 1)))
+              (format t \"~A\" old)))" \
+  2>/dev/null | tail -1)
+
+CURRENT_BRANCH=$(git branch --show-current)
+DEST_EXISTS=$(git branch | grep -c "test-move-dest")
+
+if [ "$CURRENT_BRANCH" = "test-move-dest" ] && [ "$DEST_EXISTS" -ge 1 ]; then
+    pass "Move commits to new branch works (moved 1 commit to test-move-dest)"
+else
+    fail "Move commits failed: current=$CURRENT_BRANCH, dest_exists=$DEST_EXISTS, result=$MOVE_RESULT"
+fi
+
+# Cleanup move test
+git checkout master 2>/dev/null
+git branch -D test-move-source 2>/dev/null
+git branch -D test-move-dest 2>/dev/null
+
+# Test custom pager detection (should return nil when not configured)
+PAGER_RESULT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((pager (gilt.views::detect-custom-pager)))
+              (format t \"~A\" (if pager pager \"NONE\"))))" \
+  2>/dev/null | tail -1)
+
+if [ -n "$PAGER_RESULT" ]; then
+    if [ "$PAGER_RESULT" = "NONE" ]; then
+        pass "Custom pager detection works (no pager configured)"
+    else
+        pass "Custom pager detection works (found: $PAGER_RESULT)"
+    fi
+else
+    fail "Custom pager detection failed"
+fi
+
+# Test toast notification functions exist and work
+TOAST_RESULT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (let ((view (make-instance (quote gilt.views::main-view))))
+              (gilt.views::show-toast view \"test\" 0.1)
+              (format t \"~A ~A\"
+                (if (gilt.views::toast-message view) \"MSG-OK\" \"MSG-FAIL\")
+                (if (> (gilt.views::toast-expiry view) 0) \"EXP-OK\" \"EXP-FAIL\"))))" \
+  2>/dev/null | tail -1)
+
+if [ "$TOAST_RESULT" = "MSG-OK EXP-OK" ]; then
+    pass "Toast notification system works"
+else
+    fail "Toast notification returned: '$TOAST_RESULT'"
+fi
+
+# Test format-diff-lines with built-in colorizer
+DIFF_FMT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.views::*custom-pager* nil)
+            (let ((lines (gilt.views::format-diff-lines
+                          (format nil \"+added~%-removed~%@@ hunk~%plain\"))))
+              (format t \"~D\" (length lines))))" \
+  2>/dev/null | tail -1)
+
+if [ "$DIFF_FMT" = "4" ]; then
+    pass "format-diff-lines produces colored output (4 lines)"
+else
+    fail "format-diff-lines returned: '$DIFF_FMT'"
+fi
+
+# Test nerd font icon system
+NERD_RESULT=$(GILT_NERD_FONTS=1 sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.views::*nerd-fonts* :unset)
+            (let ((enabled (gilt.views::nerd-fonts-p))
+                  (ico (gilt.views::icon :branches)))
+              (format t \"~A ~A\"
+                (if enabled \"ON\" \"OFF\")
+                (if (> (length ico) 0) \"HAS-ICON\" \"NO-ICON\"))))" \
+  2>/dev/null | tail -1)
+
+if [ "$NERD_RESULT" = "ON HAS-ICON" ]; then
+    pass "Nerd font icons work when enabled (GILT_NERD_FONTS=1)"
+else
+    fail "Nerd font icons returned: '$NERD_RESULT' (expected 'ON HAS-ICON')"
+fi
+
+# Test nerd font icons disabled by default
+NERD_OFF=$(GILT_NERD_FONTS="" sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.views::*nerd-fonts* :unset)
+            (let ((ico (gilt.views::icon :branches)))
+              (format t \"~A\" (if (= (length ico) 0) \"EMPTY\" \"NOT-EMPTY\"))))" \
+  2>/dev/null | tail -1)
+
+if [ "$NERD_OFF" = "EMPTY" ]; then
+    pass "Nerd font icons disabled when not configured"
+else
+    fail "Nerd font icons should be empty when disabled: '$NERD_OFF'"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════"

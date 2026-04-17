@@ -230,6 +230,18 @@
         (apply #'git-run (append args (list "--" file)))
         (apply #'git-run args))))
 
+(defun git-diff-refs (ref-a ref-b &key (context-size 3) ignore-whitespace)
+  "Get diff between two refs (branches, tags, commits)."
+  (let ((args (list "diff" "--color=always"
+                    (format nil "-U~D" context-size)
+                    ref-a ref-b)))
+    (when ignore-whitespace (push "-w" (cdr (last args))))
+    (apply #'git-run args)))
+
+(defun git-diff-refs-stat (ref-a ref-b)
+  "Get diffstat summary between two refs."
+  (git-run "diff" "--stat" ref-a ref-b))
+
 ;;; Hunk class for partial staging
 
 (defclass diff-hunk ()
@@ -453,6 +465,19 @@
 (defun git-commit-message (hash)
   "Get the full commit message for a given commit hash"
   (git-run "log" "-1" "--format=%B" hash))
+
+(defun git-commit-files (hash)
+  "Get list of files changed in a commit. Returns list of (status . filename) pairs."
+  (let ((lines (git-run-lines "diff-tree" "--no-commit-id" "-r" "--name-status" hash)))
+    (loop for line in lines
+          when (> (length line) 2)
+          collect (cons (subseq line 0 1) (string-trim '(#\Tab #\Space) (subseq line 1))))))
+
+(defun git-commit-diff (hash &optional file)
+  "Get the diff for a specific commit, optionally for a single file."
+  (if file
+      (git-run "diff" (format nil "~A^" hash) hash "--color=always" "--" file)
+      (git-run "diff" (format nil "~A^" hash) hash "--color=always")))
 
 ;;; Blame
 
@@ -838,6 +863,18 @@
 (defun git-create-branch (name)
   "Create and checkout a new branch"
   (git-run "checkout" "-b" name))
+
+(defun git-move-commits-to-new-branch (new-branch-name count)
+  "Move the last COUNT commits from the current branch to a new branch.
+   Creates NEW-BRANCH-NAME at current HEAD, then resets current branch back."
+  (let ((current (git-current-branch)))
+    ;; Create the new branch at current HEAD (without switching to it)
+    (git-run "branch" new-branch-name)
+    ;; Reset current branch back by COUNT commits
+    (git-run "reset" "--hard" (format nil "HEAD~~~D" count))
+    ;; Switch to the new branch
+    (git-run "checkout" new-branch-name)
+    current))
 
 (defun git-rename-branch (old-name new-name)
   "Rename a local branch"
