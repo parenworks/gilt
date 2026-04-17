@@ -310,15 +310,15 @@
 (defun draw-help-bar (row width bindings &optional version)
   "Draw a help bar showing key bindings. bindings is alist of (key . description)"
   (cursor-to row 1)
-  (bg (color-code 236))
+  (bg (color-code :helpbar-bg))
   ;; Draw keybindings
   (loop for (key . desc) in bindings
         for first = t then nil
         do
            (unless first (write-string "  " *terminal-io*))
-           (fg (color-code :bright-cyan))
+           (fg (color-code :helpbar-key))
            (write-string key *terminal-io*)
-           (fg (color-code :white))
+           (fg (color-code :helpbar-text))
            (write-char #\Space *terminal-io*)
            (write-string desc *terminal-io*))
   ;; Fill rest of line and draw version on right
@@ -329,8 +329,8 @@
         (clear-to-end)
         ;; Position cursor for version on right
         (cursor-to row (- width version-len))
-        (bg (color-code 236))
-        (fg (color-code :bright-black))
+        (bg (color-code :helpbar-bg))
+        (fg (color-code :helpbar-version))
         (write-string version-str *terminal-io*))
       (clear-to-end))
   (reset)

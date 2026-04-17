@@ -76,6 +76,11 @@
 (register-color :staged 34)
 (register-color :unstaged 160)
 (register-color :untracked 245)
+;; Help bar colors
+(register-color :helpbar-bg 236)
+(register-color :helpbar-key 14)      ; bright-cyan
+(register-color :helpbar-text 7)      ; white
+(register-color :helpbar-version 8)   ; bright-black (dim)
 
 ;;; Theme loading
 ;;; Override colors from ~/.config/gilt/theme.conf
