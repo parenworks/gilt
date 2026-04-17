@@ -145,7 +145,18 @@
       ;; Check if toast expired and needs re-render
       (when (and has-toast (null key)
                  (gilt.views::toast-expired-p view))
-        (app-render app)))))
+        (app-render app))
+      ;; Background auto-refresh and auto-fetch (on timeout, no key pressed)
+      (when (and view (null key) (not has-runner))
+        (let ((refreshed nil))
+          ;; Check/start background fetch
+          (when (gilt.views::maybe-auto-fetch view)
+            (setf refreshed t))
+          ;; Auto-refresh git status periodically
+          (when (gilt.views::maybe-auto-refresh view)
+            (setf refreshed t))
+          (when refreshed
+            (app-render app)))))))
 
 ;;; Global application instance
 (defparameter *app* nil "The current Gilt application instance")

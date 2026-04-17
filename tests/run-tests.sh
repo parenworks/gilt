@@ -663,6 +663,73 @@ else
     fail "Patch builder slots: '$PATCH_SLOTS' found (expected 6)"
 fi
 
+# ─── Auto-Refresh / Auto-Fetch Tests ────────────────────────────
+section "Auto-Refresh / Auto-Fetch"
+
+# Test detect-auto-fetch-config returns defaults
+AUTO_CONFIG=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (multiple-value-bind (enabled fetch-int refresh-int)
+                (gilt.views::detect-auto-fetch-config)
+              (format t \"~A ~D ~D\"
+                (if enabled \"ON\" \"OFF\")
+                fetch-int refresh-int)))" \
+  2>/dev/null | tail -1)
+
+if echo "$AUTO_CONFIG" | grep -qE "^OFF [0-9]+ [0-9]+$"; then
+    pass "detect-auto-fetch-config returns defaults ($AUTO_CONFIG)"
+else
+    fail "detect-auto-fetch-config returned: '$AUTO_CONFIG' (expected 'OFF <int> <int>')"
+fi
+
+# Test auto-fetch enabled via env var
+AUTO_ENABLED=$(GILT_AUTO_FETCH=1 GILT_FETCH_INTERVAL=30 sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (multiple-value-bind (enabled fetch-int refresh-int)
+                (gilt.views::detect-auto-fetch-config)
+              (format t \"~A ~D\"
+                (if enabled \"ON\" \"OFF\")
+                fetch-int)))" \
+  2>/dev/null | tail -1)
+
+if [ "$AUTO_ENABLED" = "ON 30" ]; then
+    pass "Auto-fetch enabled via GILT_AUTO_FETCH=1, interval=30"
+else
+    fail "Auto-fetch env config returned: '$AUTO_ENABLED' (expected 'ON 30')"
+fi
+
+# Test auto-refresh/fetch slots exist on main-view
+AUTO_SLOTS=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (let ((slots '(gilt.views::auto-refresh-interval
+                           gilt.views::auto-fetch-interval
+                           gilt.views::auto-fetch-enabled
+                           gilt.views::last-refresh-time
+                           gilt.views::last-fetch-time
+                           gilt.views::fetch-thread
+                           gilt.views::fetch-result
+                           gilt.views::fetch-in-progress)))
+              (format t \"~D\"
+                (count-if (lambda (s)
+                            (find-method (fdefinition s) nil
+                              (list (find-class 'gilt.views::main-view)) nil))
+                          slots))))" \
+  2>/dev/null | tail -1)
+
+if [ "$AUTO_SLOTS" = "8" ]; then
+    pass "All 8 auto-refresh/fetch slots exist on main-view"
+else
+    fail "Auto-refresh/fetch slots: '$AUTO_SLOTS' found (expected 8)"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════"

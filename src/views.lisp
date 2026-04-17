@@ -81,6 +81,127 @@
           (reset)
           (finish-output *terminal-io*)))))
 
+;;; Background auto-refresh and auto-fetch
+;;; Auto-refresh polls git status periodically to detect external changes.
+;;; Auto-fetch periodically runs git fetch in a background thread.
+;;; Enable via git config gilt.autofetch true, configure interval with gilt.fetchinterval (seconds).
+;;; Auto-refresh is always on (2s default), fetch must be explicitly enabled.
+
+(defun detect-auto-fetch-config ()
+  "Detect auto-fetch settings from git config or environment.
+   Returns (values enabled-p fetch-interval refresh-interval)."
+  (let ((fetch-enabled
+          (or (let ((env (uiop:getenv "GILT_AUTO_FETCH")))
+                (and env (member env '("1" "true" "yes") :test #'string-equal)))
+              (ignore-errors
+                (let ((val (string-trim '(#\Newline #\Space)
+                                        (gilt.git:git-run "config" "--get" "gilt.autofetch"))))
+                  (and val (member val '("true" "1" "yes") :test #'string-equal))))))
+        (fetch-interval
+          (or (ignore-errors
+                (let ((env (uiop:getenv "GILT_FETCH_INTERVAL")))
+                  (when env (parse-integer env :junk-allowed t))))
+              (ignore-errors
+                (let ((val (string-trim '(#\Newline #\Space)
+                                        (gilt.git:git-run "config" "--get" "gilt.fetchinterval"))))
+                  (when (and val (> (length val) 0))
+                    (parse-integer val :junk-allowed t))))
+              60))
+        (refresh-interval
+          (or (ignore-errors
+                (let ((env (uiop:getenv "GILT_REFRESH_INTERVAL")))
+                  (when env (parse-integer env :junk-allowed t))))
+              (ignore-errors
+                (let ((val (string-trim '(#\Newline #\Space)
+                                        (gilt.git:git-run "config" "--get" "gilt.refreshinterval"))))
+                  (when (and val (> (length val) 0))
+                    (parse-integer val :junk-allowed t))))
+              2)))
+    (values fetch-enabled
+            (max 10 fetch-interval)      ; minimum 10 seconds between fetches
+            (max 1 refresh-interval))))   ; minimum 1 second between refreshes
+
+(defun init-auto-refresh (view)
+  "Initialize auto-refresh and auto-fetch settings from config."
+  (multiple-value-bind (fetch-enabled fetch-interval refresh-interval)
+      (detect-auto-fetch-config)
+    (setf (auto-fetch-enabled view) fetch-enabled)
+    (setf (auto-fetch-interval view) fetch-interval)
+    (setf (auto-refresh-interval view) refresh-interval)
+    (let ((now (get-internal-real-time)))
+      (setf (last-refresh-time view) now)
+      (setf (last-fetch-time view) now))))
+
+(defun seconds-since (timestamp)
+  "Return the number of seconds elapsed since TIMESTAMP (internal-real-time units)."
+  (/ (- (get-internal-real-time) timestamp)
+     internal-time-units-per-second))
+
+(defun start-background-fetch (view)
+  "Start a background git fetch in a separate thread.
+   Does nothing if a fetch is already in progress."
+  (when (and (auto-fetch-enabled view)
+             (not (fetch-in-progress view)))
+    (setf (fetch-in-progress view) t)
+    (setf (fetch-result view) nil)
+    (setf (fetch-thread view)
+          (sb-thread:make-thread
+           (lambda ()
+             (handler-case
+                 (progn
+                   (gilt.git:git-fetch)
+                   :ok)
+               (error () :error)))
+           :name "gilt-auto-fetch"))))
+
+(defun check-background-fetch (view)
+  "Check if a background fetch has completed. If so, process the result.
+   Returns T if a fetch completed and data should be refreshed."
+  (when (and (fetch-in-progress view)
+             (fetch-thread view)
+             (not (sb-thread:thread-alive-p (fetch-thread view))))
+    ;; Thread finished - get result
+    (let ((result (ignore-errors
+                    (sb-thread:join-thread (fetch-thread view)))))
+      (setf (fetch-result view) (or result :error))
+      (setf (fetch-in-progress view) nil)
+      (setf (fetch-thread view) nil)
+      (setf (last-fetch-time view) (get-internal-real-time))
+      (when (eq (fetch-result view) :ok)
+        (show-toast view "Auto-fetch complete")
+        t))))
+
+(defun maybe-auto-refresh (view)
+  "Check if it's time for an auto-refresh of git status.
+   Returns T if a refresh was performed."
+  (when (and (not (active-dialog view))
+             (not (patch-builder-mode view))
+             (not (commit-files-mode view))
+             (not (rebase-mode view))
+             (not (config-mode view))
+             (not (blame-mode view))
+             (>= (seconds-since (last-refresh-time view))
+                  (auto-refresh-interval view)))
+    (setf (last-refresh-time view) (get-internal-real-time))
+    (refresh-data view)
+    t))
+
+(defun maybe-auto-fetch (view)
+  "Check if it's time for a background fetch. Starts one if needed.
+   Also checks for completed background fetches."
+  ;; Check completed fetch first
+  (let ((fetch-completed (check-background-fetch view)))
+    ;; Start new fetch if interval elapsed
+    (when (and (auto-fetch-enabled view)
+               (not (fetch-in-progress view))
+               (>= (seconds-since (last-fetch-time view))
+                    (auto-fetch-interval view)))
+      (start-background-fetch view))
+    ;; If fetch completed, refresh data
+    (when fetch-completed
+      (refresh-data view)
+      t)))
+
 ;;; Nerd Font icons
 ;;; Toggle with GILT_NERD_FONTS=1 env var or git config gilt.nerdfonts true
 
@@ -271,6 +392,15 @@
    (diff-mode :accessor diff-mode :initform nil)
    (diff-ref-a :accessor diff-ref-a :initform nil)
    (diff-ref-b :accessor diff-ref-b :initform nil)
+   ;; Background auto-refresh and auto-fetch
+   (auto-refresh-interval :accessor auto-refresh-interval :initform 2)  ; seconds between status refreshes
+   (auto-fetch-interval :accessor auto-fetch-interval :initform 60)     ; seconds between background fetches
+   (auto-fetch-enabled :accessor auto-fetch-enabled :initform nil)
+   (last-refresh-time :accessor last-refresh-time :initform 0)
+   (last-fetch-time :accessor last-fetch-time :initform 0)
+   (fetch-thread :accessor fetch-thread :initform nil)
+   (fetch-result :accessor fetch-result :initform nil)     ; :ok, :error, or nil (pending)
+   (fetch-in-progress :accessor fetch-in-progress :initform nil)
    ;; Custom Patch Builder
    (patch-builder-mode :accessor patch-builder-mode :initform nil)
    (patch-builder-hash :accessor patch-builder-hash :initform nil)
@@ -303,6 +433,8 @@
               (commits-panel view)
               (stash-panel view)
               (main-panel view)))
+  ;; Initialize auto-refresh and auto-fetch from config
+  (init-auto-refresh view)
   (refresh-data view))
 
 (defun log-command (view cmd)
@@ -1113,6 +1245,13 @@
                        "   v          Preview accumulated patch"
                        "   P          Apply patch (to index, new commit, or reverse)"
                        "   Esc        Back (hunk view -> files, files -> exit)"
+                       ""
+                       " AUTO-REFRESH / AUTO-FETCH"
+                       "              Auto-refresh: git status polled every 2s (default)"
+                       "              Configure: git config gilt.refreshinterval <secs>"
+                       "              Auto-fetch: git config gilt.autofetch true"
+                       "              Interval:   git config gilt.fetchinterval <secs> (default 60)"
+                       "              Env vars:   GILT_AUTO_FETCH, GILT_FETCH_INTERVAL, GILT_REFRESH_INTERVAL"
                        ""
                        " NERD FONTS"
                        "              GILT_NERD_FONTS=1 or git config gilt.nerdfonts true"
