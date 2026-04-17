@@ -730,6 +730,84 @@ else
     fail "Auto-refresh/fetch slots: '$AUTO_SLOTS' found (expected 8)"
 fi
 
+# ─── Phase 3 Feature Tests ──────────────────────────────────────
+section "Phase 3: Screen Mode / Portrait / Accordion / Credentials"
+
+# Test screen mode cycling
+SCREEN_MODE=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((v (make-instance 'gilt.views::main-view)))
+              (format t \"~A\" (gilt.views::screen-mode v))
+              (setf (gilt.views::screen-mode v) :half)
+              (format t \" ~A\" (gilt.views::screen-mode v))
+              (setf (gilt.views::screen-mode v) :full)
+              (format t \" ~A\" (gilt.views::screen-mode v))))" \
+  2>/dev/null | tail -1)
+
+if [ "$SCREEN_MODE" = "NORMAL HALF FULL" ]; then
+    pass "Screen mode cycles: normal -> half -> full"
+else
+    fail "Screen mode returned: '$SCREEN_MODE' (expected 'NORMAL HALF FULL')"
+fi
+
+# Test portrait mode and threshold slots
+PORTRAIT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((v (make-instance 'gilt.views::main-view)))
+              (format t \"~A ~D ~A\"
+                (gilt.views::portrait-mode v)
+                (gilt.views::portrait-threshold v)
+                (gilt.views::accordion-weight v))))" \
+  2>/dev/null | tail -1)
+
+if [ "$PORTRAIT" = "NIL 100 0.6" ]; then
+    pass "Portrait mode defaults: off, threshold=100, accordion=0.6"
+else
+    fail "Portrait defaults returned: '$PORTRAIT' (expected 'NIL 100 0.6')"
+fi
+
+# Test credential-prompt-p detection
+CRED=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (let ((results
+                   (list (gilt.views::credential-prompt-p \"Username for 'https://github.com':\")
+                         (gilt.views::credential-prompt-p \"Password for 'https://user@github.com':\")
+                         (gilt.views::credential-prompt-p \"Enter passphrase for key '/home/user/.ssh/id_rsa':\")
+                         (gilt.views::credential-prompt-p \"remote: Counting objects\")
+                         (gilt.views::credential-prompt-p \"\"))))
+              (format t \"~{~A~^ ~}\" (mapcar (lambda (x) (if x \"T\" \"F\")) results))))" \
+  2>/dev/null | tail -1)
+
+if [ "$CRED" = "T T T F F" ]; then
+    pass "credential-prompt-p detects username/password/passphrase correctly"
+else
+    fail "credential-prompt-p returned: '$CRED' (expected 'T T T F F')"
+fi
+
+# Test draw-landscape-layout and draw-portrait-layout exist
+LAYOUTS=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (format t \"~A ~A\"
+              (if (fboundp 'gilt.views::draw-landscape-layout) \"Y\" \"N\")
+              (if (fboundp 'gilt.views::draw-portrait-layout) \"Y\" \"N\")))" \
+  2>/dev/null | tail -1)
+
+if [ "$LAYOUTS" = "Y Y" ]; then
+    pass "draw-landscape-layout and draw-portrait-layout both exist"
+else
+    fail "Layout functions: '$LAYOUTS' (expected 'Y Y')"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════"

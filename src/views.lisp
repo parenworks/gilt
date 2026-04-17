@@ -81,6 +81,21 @@
           (reset)
           (finish-output *terminal-io*)))))
 
+;;; Credential prompting
+;;; Detect when git asks for username, password, or passphrase and show a dialog.
+
+(defun credential-prompt-p (text)
+  "Return T if TEXT looks like a git credential prompt (username, password, passphrase)."
+  (and (> (length text) 0)
+       (let ((lower (string-downcase text)))
+         (or (search "username" lower)
+             (search "password" lower)
+             (search "passphrase" lower)
+             ;; Match patterns like "Username for 'https://github.com':"
+             (and (search ":" lower)
+                  (or (search "user" lower)
+                      (search "token" lower)))))))
+
 ;;; Background auto-refresh and auto-fetch
 ;;; Auto-refresh polls git status periodically to detect external changes.
 ;;; Auto-fetch periodically runs git fetch in a background thread.
@@ -374,6 +389,11 @@
    (range-select-start :accessor range-select-start :initform nil)
    ;; Screen mode
    (screen-mode :accessor screen-mode :initform :normal)
+   ;; Accordion weight: how much extra space focused panel gets (0.0-1.0)
+   (accordion-weight :accessor accordion-weight :initform 0.6)
+   ;; Portrait mode: stack panels vertically on narrow terminals
+   (portrait-mode :accessor portrait-mode :initform nil)
+   (portrait-threshold :accessor portrait-threshold :initform 100)  ; auto-switch below this width
    ;; Graph mode for commits
    (graph-mode :accessor graph-mode :initform nil)
    ;; Line-level staging mode
@@ -1006,10 +1026,8 @@
     (t ; Default
      '(("j/k" . "navigate") ("Tab" . "panels") ("r" . "refresh") ("q" . "quit")))))
 
-(defmethod draw-view ((view main-view) width height)
-  ;; LazyGit layout:
-  ;; Left column: 5 stacked panels - focused panel expands (wider ~40%)
-  ;; Right column: main content panel (top) + command log (bottom)
+(defun draw-landscape-layout (view width height)
+  "Standard landscape layout: left side panels + right main/cmdlog."
   (let* ((left-width (case (screen-mode view)
                        (:half (max 50 (floor width 2)))        ; 50% left
                        (:full (- width 2))                      ; Nearly full width (no right panel)
@@ -1022,10 +1040,11 @@
          (main-height (max 3 (- usable-height cmdlog-height)))
          ;; Base heights for left panels - small for unfocused, larger for focused
          (min-h 3)  ; Minimum height for collapsed panels
-         ;; Calculate expanded height for focused panel
+         ;; Calculate expanded height for focused panel using accordion weight
          (total-min (* 5 min-h))
          (extra-space (max 0 (- usable-height total-min)))
-         (expanded-extra (floor extra-space 2))  ; Focused gets half the extra
+         (weight (accordion-weight view))
+         (expanded-extra (floor (* extra-space weight)))  ; Focused gets weight% of extra
          (other-extra (floor (- extra-space expanded-extra) 4))  ; Rest split among others
          ;; Calculate individual heights
          (heights (loop for i from 0 below 5
@@ -1073,9 +1092,58 @@
     (setf (panel-x (cmdlog-panel view)) (1+ left-width)
           (panel-y (cmdlog-panel view)) (1+ main-height)
           (panel-width (cmdlog-panel view)) right-width
-          (panel-height (cmdlog-panel view)) cmdlog-height)
-    ;; Update focus state - but only if main panel is not explicitly focused
-    (let ((main-panel-focused (panel-focused (main-panel view))))
+          (panel-height (cmdlog-panel view)) cmdlog-height)))
+
+(defun draw-portrait-layout (view width height)
+  "Portrait/stacked layout for narrow terminals: focused side panel on top,
+   main panel below. Other side panels get minimal height."
+  (let* ((usable-height (max 1 (- height 1)))
+         (focused-idx (view-focused-panel view))
+         (all-panels (list (status-panel view) (files-panel view)
+                           (branches-panel view) (commits-panel view)
+                           (stash-panel view)))
+         ;; In portrait: focused panel gets ~40% height, main gets ~50%, others get min
+         (min-h 3)
+         (other-panels-space (* 4 min-h))  ; 4 unfocused panels at min height
+         (cmdlog-height (min 5 (floor usable-height 8)))
+         (remaining (max 6 (- usable-height other-panels-space cmdlog-height)))
+         (focused-h (max 5 (floor (* remaining 2) 5)))  ; 40% of remaining
+         (main-h (max 3 (- remaining focused-h)))  ; Rest to main
+         (cur-y 1))
+    ;; Position all panels full-width, stacked vertically
+    (loop for panel in all-panels
+          for i from 0
+          for h = (if (= i focused-idx) focused-h min-h)
+          do (setf (panel-x panel) 1
+                   (panel-y panel) cur-y
+                   (panel-width panel) width
+                   (panel-height panel) h)
+             (incf cur-y h))
+    ;; Main panel below all side panels
+    (setf (panel-x (main-panel view)) 1
+          (panel-y (main-panel view)) cur-y
+          (panel-width (main-panel view)) width
+          (panel-height (main-panel view)) main-h)
+    (incf cur-y main-h)
+    ;; Command log at bottom
+    (let ((actual-cmdlog-h (max 3 (- (+ usable-height 1) cur-y))))
+      (setf (panel-x (cmdlog-panel view)) 1
+            (panel-y (cmdlog-panel view)) cur-y
+            (panel-width (cmdlog-panel view)) width
+            (panel-height (cmdlog-panel view)) actual-cmdlog-h))))
+
+(defmethod draw-view ((view main-view) width height)
+  ;; Auto-detect portrait mode based on terminal width
+  (let ((use-portrait (or (portrait-mode view)
+                          (and (not (portrait-mode view))
+                               (< width (portrait-threshold view))))))
+    ;; Layout
+    (if use-portrait
+        (draw-portrait-layout view width height)
+        (draw-landscape-layout view width height))
+    ;; Update focus state and draw
+    (let ((focused-idx (view-focused-panel view))
+          (main-panel-focused (panel-focused (main-panel view))))
       (if main-panel-focused
           ;; Main panel is focused - unfocus all LEFT panels only (not main panel)
           (loop for panel in (view-panels view)
@@ -1088,16 +1156,16 @@
                   do (setf (panel-focused panel) (= i focused-idx)))
             ;; Main panel gets focus in blame mode or cherry-pick mode
             (setf (panel-focused (main-panel view))
-                  (or (blame-mode view) (cherry-pick-mode view))))))
-    ;; Draw all panels (includes main-panel which is 6th in view-panels)
-    (dolist (panel (view-panels view))
-      (draw-panel panel))
-    ;; Draw command log panel (not in focus cycle)
-    (draw-panel (cmdlog-panel view))
-    ;; Draw context-specific help bar at bottom (with version from gilt package)
-    (draw-help-bar height width (get-panel-help focused-idx view) 
-                   (when (find-package :gilt) 
-                     (symbol-value (find-symbol "*VERSION*" :gilt))))
+                  (or (blame-mode view) (cherry-pick-mode view)))))
+      ;; Draw all panels (includes main-panel which is 6th in view-panels)
+      (dolist (panel (view-panels view))
+        (draw-panel panel))
+      ;; Draw command log panel (not in focus cycle)
+      (draw-panel (cmdlog-panel view))
+      ;; Draw context-specific help bar at bottom (with version from gilt package)
+      (draw-help-bar height width (get-panel-help focused-idx view) 
+                     (when (find-package :gilt) 
+                       (symbol-value (find-symbol "*VERSION*" :gilt)))))
     ;; Draw spinner in bottom left if active
     (when (spinner-active view)
       (draw-spinner view height))
@@ -1216,6 +1284,14 @@
                        ""
                        " LAYOUT"
                        "   +          Cycle screen mode: normal/half/full"
+                       "   _          Cycle screen mode reverse: full/half/normal"
+                       "   |          Toggle portrait/landscape layout"
+                       "              Auto-portrait: narrow terminals (<100 cols)"
+                       "              Accordion: focused panel expands (weight: 0.6)"
+                       ""
+                       " CREDENTIAL PROMPTING"
+                       "              Auto-detected during push/pull/fetch"
+                       "              Shows input dialog for username/password/token"
                        ""
                        " RECENT REPOS"
                        "   L          Show recent repos (Enter to switch)"
@@ -2256,6 +2332,23 @@
                                 (refresh-data view))
                               (show-toast view result-msg)))
                         (show-toast view "No patch to commit"))))))
+             ;; Credential prompt dialog (from PTY runner)
+             ((string= (dialog-title dlg) "Credential Required")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-idx (dialog-selected-button dlg))
+                     (selected-button (nth selected-idx buttons))
+                     (input (first (dialog-input-lines dlg))))
+                (cond
+                  ((string= selected-button "Send")
+                   (when (and input (active-runner view))
+                     ;; Send credential input followed by newline
+                     (gilt.pty:runner-send (active-runner view)
+                                           (format nil "~A~%" input))
+                     (log-command view "Sent credential response")))
+                  ((string= selected-button "Cancel")
+                   (when (active-runner view)
+                     (gilt.pty:runner-stop (active-runner view))
+                     (show-toast view "Operation cancelled"))))))
              ;; Copy menu dialog
              ((string= (dialog-title dlg) "Copy")
               (let* ((buttons (dialog-buttons dlg))
@@ -3406,16 +3499,35 @@
                (git-stage-all))))
        (refresh-data view)
        nil)
-      ;; Screen mode cycling - '+' (global)
+      ;; Screen mode cycling - '+' forward (global)
       ((and (key-event-char key) (char= (key-event-char key) #\+))
        (setf (screen-mode view)
              (case (screen-mode view)
                (:normal :half)
                (:half :full)
                (:full :normal)))
-       (log-command view (format nil "Screen mode: ~A"
-                                  (case (screen-mode view)
-                                    (:normal "normal") (:half "half") (:full "full"))))
+       (let ((mode-name (case (screen-mode view)
+                          (:normal "normal") (:half "half") (:full "full"))))
+         (log-command view (format nil "Screen mode: ~A" mode-name))
+         (show-toast view (format nil "Screen: ~A" mode-name)))
+       nil)
+      ;; Screen mode cycling - '_' reverse (global)
+      ((and (key-event-char key) (char= (key-event-char key) #\_))
+       (setf (screen-mode view)
+             (case (screen-mode view)
+               (:normal :full)
+               (:full :half)
+               (:half :normal)))
+       (let ((mode-name (case (screen-mode view)
+                          (:normal "normal") (:half "half") (:full "full"))))
+         (log-command view (format nil "Screen mode: ~A" mode-name))
+         (show-toast view (format nil "Screen: ~A" mode-name)))
+       nil)
+      ;; Portrait mode toggle - '|' (global)
+      ((and (key-event-char key) (char= (key-event-char key) #\|))
+       (setf (portrait-mode view) (not (portrait-mode view)))
+       (log-command view (format nil "Portrait mode: ~A" (if (portrait-mode view) "on" "off")))
+       (show-toast view (format nil "Layout: ~A" (if (portrait-mode view) "portrait" "landscape")))
        nil)
       ;; Recent repos - 'L' (capital, global)
       ((and (key-event-char key) (char= (key-event-char key) #\L))

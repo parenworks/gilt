@@ -131,6 +131,20 @@
         (when (and current-runner (null key))
           ;; Poll the runner for updates
           (gilt.pty:runner-poll current-runner)
+          ;; Check for credential prompts in current partial line
+          (let ((partial (gilt.pty:runner-current-line current-runner)))
+            (when (and (not (gilt.pty:runner-finished-p current-runner))
+                       (not (gilt.views::active-dialog view))
+                       (> (length partial) 0)
+                       (gilt.views::credential-prompt-p partial))
+              ;; Show credential input dialog
+              (setf (gilt.views::active-dialog view)
+                    (gilt.views::make-dialog
+                     :title "Credential Required"
+                     :message partial
+                     :input-mode t
+                     :data (list :credential-prompt t)
+                     :buttons '("Send" "Cancel")))))
           ;; Update main panel with output
           (let ((output (gilt.pty:runner-get-output current-runner)))
             (setf (gilt.ui:panel-items (gilt.views::main-panel view))
