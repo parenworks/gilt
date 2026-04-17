@@ -270,7 +270,14 @@
    ;; Diff mode (compare two refs)
    (diff-mode :accessor diff-mode :initform nil)
    (diff-ref-a :accessor diff-ref-a :initform nil)
-   (diff-ref-b :accessor diff-ref-b :initform nil)))
+   (diff-ref-b :accessor diff-ref-b :initform nil)
+   ;; Custom Patch Builder
+   (patch-builder-mode :accessor patch-builder-mode :initform nil)
+   (patch-builder-hash :accessor patch-builder-hash :initform nil)
+   (patch-builder-files :accessor patch-builder-files :initform nil)   ; alist of (file . hunks)
+   (patch-builder-selected :accessor patch-builder-selected :initform nil) ; hash-table: file -> set of hunk indices
+   (patch-builder-current-file :accessor patch-builder-current-file :initform nil)
+   (patch-builder-hunk-view :accessor patch-builder-hunk-view :initform nil)))
 
 (defmethod initialize-instance :after ((view main-view) &key)
   ;; Create all panels
@@ -698,6 +705,22 @@
                         ;; Plain text
                         (t line))))))
 
+(defun build-accumulated-patch (view)
+  "Build the full patch text from the patch builder's selections.
+   Concatenates selected hunks for each file with proper patch headers."
+  (with-output-to-string (out)
+    (dolist (entry (patch-builder-files view))
+      (let* ((file (car entry))
+             (hunks (cdr entry))
+             (sel (gethash file (patch-builder-selected view))))
+        (when (and sel hunks)
+          (format out "--- a/~A~%" file)
+          (format out "+++ b/~A~%" file)
+          (dolist (idx (sort (copy-list sel) #'<))
+            (when (< idx (length hunks))
+              (let ((hunk (nth idx hunks)))
+                (format out "~{~A~%~}" (hunk-content hunk))))))))))
+
 (defun update-rebase-display (view)
   "Update the commits panel to show the interactive rebase todo list."
   (let ((entries (rebase-entries view)))
@@ -1080,6 +1103,16 @@
                        "   {          Decrease diff context lines"
                        "   W          Toggle whitespace in diffs"
                        "              Custom pager: GILT_PAGER env or git config gilt.pager"
+                       ""
+                       " CUSTOM PATCH BUILDER"
+                       "   Enter      View commit files (from commits panel)"
+                       "   p          Enter patch builder (from commit files view)"
+                       "   Space      Toggle file/hunk selection"
+                       "   Enter      Drill into hunks for a file"
+                       "   a          Select all  /  n  Deselect all"
+                       "   v          Preview accumulated patch"
+                       "   P          Apply patch (to index, new commit, or reverse)"
+                       "   Esc        Back (hunk view -> files, files -> exit)"
                        ""
                        " NERD FONTS"
                        "              GILT_NERD_FONTS=1 or git config gilt.nerdfonts true"
@@ -2009,6 +2042,81 @@
                     (show-toast view (format nil "Moved ~D commit~:P from ~A to ~A" 
                                              count old-branch branch-name)))
                   (refresh-data view))))
+             ;; Apply Custom Patch dialog
+             ((string= (dialog-title dlg) "Apply Custom Patch")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-idx (dialog-selected-button dlg))
+                     (selected-button (nth selected-idx buttons)))
+                (cond
+                  ((string= selected-button "Apply to Index")
+                   (let ((patch-text (build-accumulated-patch view)))
+                     (if (and patch-text (> (length patch-text) 0))
+                         (multiple-value-bind (ok msg) (apply-patch-to-index patch-text)
+                           (if ok
+                               (progn
+                                 (log-command view "Custom patch applied to index")
+                                 (show-toast view "Patch applied to index")
+                                 ;; Exit patch builder
+                                 (setf (patch-builder-mode view) nil)
+                                 (setf (patch-builder-hash view) nil)
+                                 (setf (patch-builder-files view) nil)
+                                 (setf (patch-builder-selected view) nil)
+                                 (setf (patch-builder-current-file view) nil)
+                                 (setf (patch-builder-hunk-view view) nil)
+                                 (setf (panel-focused (main-panel view)) nil)
+                                 (refresh-data view))
+                               (show-toast view msg)))
+                         (show-toast view "No patch to apply"))))
+                  ((string= selected-button "New Commit")
+                   ;; Open a message input dialog
+                   (setf (active-dialog view)
+                         (make-dialog :title "Patch Commit Message"
+                                      :message "Enter commit message for custom patch:"
+                                      :input-mode t
+                                      :data (list :patch-commit t)
+                                      :buttons '("Commit" "Cancel")))
+                   (return-from handle-key :dialog))
+                  ((string= selected-button "Reverse")
+                   (let ((patch-text (build-accumulated-patch view)))
+                     (if (and patch-text (> (length patch-text) 0))
+                         (multiple-value-bind (ok msg) (apply-reverse-patch-to-index patch-text)
+                           (if ok
+                               (progn
+                                 (log-command view "Reverse patch applied to index")
+                                 (show-toast view "Reverse patch applied")
+                                 ;; Exit patch builder
+                                 (setf (patch-builder-mode view) nil)
+                                 (setf (patch-builder-hash view) nil)
+                                 (setf (patch-builder-files view) nil)
+                                 (setf (patch-builder-selected view) nil)
+                                 (setf (patch-builder-current-file view) nil)
+                                 (setf (patch-builder-hunk-view view) nil)
+                                 (setf (panel-focused (main-panel view)) nil)
+                                 (refresh-data view))
+                               (show-toast view msg)))
+                         (show-toast view "No patch to reverse")))))))
+             ;; Patch Commit Message dialog (from patch builder)
+             ((string= (dialog-title dlg) "Patch Commit Message")
+              (let ((msg (first (dialog-input-lines dlg))))
+                (when (and msg (> (length msg) 0))
+                  (let ((patch-text (build-accumulated-patch view)))
+                    (if (and patch-text (> (length patch-text) 0))
+                        (multiple-value-bind (ok result-msg) (create-commit-from-patch patch-text msg)
+                          (if ok
+                              (progn
+                                (log-command view (format nil "Created commit from custom patch: ~A" msg))
+                                (show-toast view result-msg)
+                                ;; Exit patch builder
+                                (setf (patch-builder-mode view) nil)
+                                (setf (patch-builder-hash view) nil)
+                                (setf (patch-builder-files view) nil)
+                                (setf (patch-builder-selected view) nil)
+                                (setf (patch-builder-current-file view) nil)
+                                (setf (patch-builder-hunk-view view) nil)
+                                (setf (panel-focused (main-panel view)) nil)
+                                (refresh-data view))
+                              (show-toast view result-msg)))
+                        (show-toast view "No patch to commit"))))))
              ;; Copy menu dialog
              ((string= (dialog-title dlg) "Copy")
               (let* ((buttons (dialog-buttons dlg))
@@ -2189,6 +2297,271 @@
          (if (copy-to-clipboard file)
              (show-toast view "Copied file name")
              (show-toast view "Copy failed")))
+       (return-from handle-key nil))
+      ;; 'p' enters patch builder for this commit
+      ((and (key-event-char key) (char= (key-event-char key) #\p))
+       (let ((hash (commit-files-hash view))
+             (files (commit-files-list view)))
+         (when (and hash files)
+           ;; Exit commit-files mode, enter patch builder
+           (setf (commit-files-mode view) nil)
+           (setf (patch-builder-mode view) t)
+           (setf (patch-builder-hash view) hash)
+           ;; Parse hunks for each file
+           (setf (patch-builder-files view)
+                 (loop for entry in files
+                       for file = (cdr entry)
+                       collect (cons file (parse-commit-hunks hash file))))
+           ;; Initialize selection table: no hunks selected
+           (setf (patch-builder-selected view) (make-hash-table :test 'equal))
+           (setf (patch-builder-current-file view) nil)
+           (setf (patch-builder-hunk-view view) nil)
+           ;; Show file list with selection state
+           (setf (panel-title (main-panel view))
+                 (format nil "[0] Patch Builder (~A) - Space:toggle Enter:hunks P:apply Esc:quit"
+                         (subseq hash 0 (min 7 (length hash)))))
+           (setf (panel-items (main-panel view))
+                 (loop for (file . hunks) in (patch-builder-files view)
+                       for sel = (gethash file (patch-builder-selected view))
+                       collect (let ((hunk-count (length hunks))
+                                     (sel-count (if sel (length sel) 0)))
+                                 (if (and sel (> sel-count 0))
+                                     `(:multi-colored
+                                       (:bright-green ,(format nil "● ~A" file))
+                                       (:bright-black ,(format nil " (~D/~D hunks)" sel-count hunk-count)))
+                                     `(:multi-colored
+                                       (:white ,(format nil "○ ~A" file))
+                                       (:bright-black ,(format nil " (~D hunks)" hunk-count)))))))
+           (setf (panel-selected (main-panel view)) 0)
+           (show-toast view "Patch builder: select files/hunks, then P to apply")))
+       (return-from handle-key nil))))
+  
+  ;; Handle patch builder mode - select hunks from commit to build a custom patch
+  (when (patch-builder-mode view)
+    (cond
+      ;; Escape exits patch builder (back to commit view or normal)
+      ((eq (key-event-code key) +key-escape+)
+       (if (patch-builder-hunk-view view)
+           ;; Exit hunk view back to file list
+           (progn
+             (setf (patch-builder-hunk-view view) nil)
+             (setf (patch-builder-current-file view) nil)
+             (setf (panel-title (main-panel view))
+                   (format nil "[0] Patch Builder (~A) - Space:toggle Enter:hunks P:apply Esc:quit"
+                           (subseq (patch-builder-hash view) 0
+                                   (min 7 (length (patch-builder-hash view))))))
+             (setf (panel-items (main-panel view))
+                   (loop for (file . hunks) in (patch-builder-files view)
+                         for sel = (gethash file (patch-builder-selected view))
+                         collect (let ((hunk-count (length hunks))
+                                       (sel-count (if sel (length sel) 0)))
+                                   (if (and sel (> sel-count 0))
+                                       `(:multi-colored
+                                         (:bright-green ,(format nil "● ~A" file))
+                                         (:bright-black ,(format nil " (~D/~D hunks)" sel-count hunk-count)))
+                                       `(:multi-colored
+                                         (:white ,(format nil "○ ~A" file))
+                                         (:bright-black ,(format nil " (~D hunks)" hunk-count)))))))
+             (setf (panel-selected (main-panel view)) 0))
+           ;; Exit patch builder entirely
+           (progn
+             (setf (patch-builder-mode view) nil)
+             (setf (patch-builder-hash view) nil)
+             (setf (patch-builder-files view) nil)
+             (setf (patch-builder-selected view) nil)
+             (setf (patch-builder-current-file view) nil)
+             (setf (patch-builder-hunk-view view) nil)
+             (setf (panel-focused (main-panel view)) nil)
+             (setf (panel-title (main-panel view)) "[0] Main")
+             (update-main-content view)))
+       (return-from handle-key nil))
+      ;; Navigation
+      ((or (eq (key-event-code key) +key-down+)
+           (and (key-event-char key) (char= (key-event-char key) #\j)))
+       (panel-select-next (main-panel view))
+       (return-from handle-key nil))
+      ((or (eq (key-event-code key) +key-up+)
+           (and (key-event-char key) (char= (key-event-char key) #\k)))
+       (panel-select-prev (main-panel view))
+       (return-from handle-key nil))
+      ;; Space toggles selection
+      ((and (key-event-char key) (char= (key-event-char key) #\Space))
+       (if (patch-builder-hunk-view view)
+           ;; Toggle individual hunk selection
+           (let* ((file (patch-builder-current-file view))
+                  (hunk-idx (panel-selected (main-panel view)))
+                  (sel (or (gethash file (patch-builder-selected view)) nil)))
+             (if (member hunk-idx sel)
+                 (setf (gethash file (patch-builder-selected view))
+                       (remove hunk-idx sel))
+                 (push hunk-idx (gethash file (patch-builder-selected view))))
+             ;; Refresh hunk list display
+             (let* ((hunks (cdr (assoc file (patch-builder-files view) :test #'string=)))
+                    (new-sel (gethash file (patch-builder-selected view))))
+               (setf (panel-items (main-panel view))
+                     (loop for h in hunks
+                           for i from 0
+                           for selected = (member i new-sel)
+                           collect (if selected
+                                       `(:multi-colored
+                                         (:bright-green ,(format nil "● Hunk ~D: " (1+ i)))
+                                         (:cyan ,(hunk-header h))
+                                         (:bright-black ,(format nil " (~D lines)" (hunk-line-count h))))
+                                       `(:multi-colored
+                                         (:white ,(format nil "○ Hunk ~D: " (1+ i)))
+                                         (:cyan ,(hunk-header h))
+                                         (:bright-black ,(format nil " (~D lines)" (hunk-line-count h)))))))))
+           ;; Toggle all hunks in a file
+           (let* ((idx (panel-selected (main-panel view)))
+                  (file-entry (nth idx (patch-builder-files view))))
+             (when file-entry
+               (let* ((file (car file-entry))
+                      (hunks (cdr file-entry))
+                      (sel (gethash file (patch-builder-selected view))))
+                 (if (and sel (= (length sel) (length hunks)))
+                     ;; All selected - deselect all
+                     (setf (gethash file (patch-builder-selected view)) nil)
+                     ;; Select all hunks
+                     (setf (gethash file (patch-builder-selected view))
+                           (loop for i from 0 below (length hunks) collect i)))
+                 ;; Refresh file list
+                 (setf (panel-items (main-panel view))
+                       (loop for (f . hs) in (patch-builder-files view)
+                             for s = (gethash f (patch-builder-selected view))
+                             collect (let ((hunk-count (length hs))
+                                           (sel-count (if s (length s) 0)))
+                                       (if (and s (> sel-count 0))
+                                           `(:multi-colored
+                                             (:bright-green ,(format nil "● ~A" f))
+                                             (:bright-black ,(format nil " (~D/~D hunks)" sel-count hunk-count)))
+                                           `(:multi-colored
+                                             (:white ,(format nil "○ ~A" f))
+                                             (:bright-black ,(format nil " (~D hunks)" hunk-count)))))))))))
+       (return-from handle-key nil))
+      ;; 'a' selects all files/hunks
+      ((and (key-event-char key) (char= (key-event-char key) #\a))
+       (if (patch-builder-hunk-view view)
+           ;; Select all hunks in current file
+           (let* ((file (patch-builder-current-file view))
+                  (hunks (cdr (assoc file (patch-builder-files view) :test #'string=))))
+             (setf (gethash file (patch-builder-selected view))
+                   (loop for i from 0 below (length hunks) collect i))
+             (let ((new-sel (gethash file (patch-builder-selected view))))
+               (setf (panel-items (main-panel view))
+                     (loop for h in hunks
+                           for i from 0
+                           for selected = (member i new-sel)
+                           collect (if selected
+                                       `(:multi-colored
+                                         (:bright-green ,(format nil "● Hunk ~D: " (1+ i)))
+                                         (:cyan ,(hunk-header h))
+                                         (:bright-black ,(format nil " (~D lines)" (hunk-line-count h))))
+                                       `(:multi-colored
+                                         (:white ,(format nil "○ Hunk ~D: " (1+ i)))
+                                         (:cyan ,(hunk-header h))
+                                         (:bright-black ,(format nil " (~D lines)" (hunk-line-count h)))))))))
+           ;; Select all files
+           (progn
+             (dolist (entry (patch-builder-files view))
+               (let ((file (car entry))
+                     (hunks (cdr entry)))
+                 (setf (gethash file (patch-builder-selected view))
+                       (loop for i from 0 below (length hunks) collect i))))
+             (setf (panel-items (main-panel view))
+                   (loop for (f . hs) in (patch-builder-files view)
+                         for s = (gethash f (patch-builder-selected view))
+                         collect (let ((hunk-count (length hs))
+                                       (sel-count (if s (length s) 0)))
+                                   `(:multi-colored
+                                     (:bright-green ,(format nil "● ~A" f))
+                                     (:bright-black ,(format nil " (~D/~D hunks)" sel-count hunk-count))))))))
+       (show-toast view "Selected all")
+       (return-from handle-key nil))
+      ;; 'n' deselects all
+      ((and (key-event-char key) (char= (key-event-char key) #\n))
+       (if (patch-builder-hunk-view view)
+           ;; Deselect all hunks in current file
+           (let* ((file (patch-builder-current-file view))
+                  (hunks (cdr (assoc file (patch-builder-files view) :test #'string=))))
+             (setf (gethash file (patch-builder-selected view)) nil)
+             (setf (panel-items (main-panel view))
+                   (loop for h in hunks
+                         for i from 0
+                         collect `(:multi-colored
+                                   (:white ,(format nil "○ Hunk ~D: " (1+ i)))
+                                   (:cyan ,(hunk-header h))
+                                   (:bright-black ,(format nil " (~D lines)" (hunk-line-count h)))))))
+           ;; Deselect all files
+           (progn
+             (clrhash (patch-builder-selected view))
+             (setf (panel-items (main-panel view))
+                   (loop for (f . hs) in (patch-builder-files view)
+                         collect `(:multi-colored
+                                   (:white ,(format nil "○ ~A" f))
+                                   (:bright-black ,(format nil " (~D hunks)" (length hs))))))))
+       (show-toast view "Deselected all")
+       (return-from handle-key nil))
+      ;; Enter drills into hunk list for selected file
+      ((eq (key-event-code key) +key-enter+)
+       (unless (patch-builder-hunk-view view)
+         (let* ((idx (panel-selected (main-panel view)))
+                (file-entry (nth idx (patch-builder-files view))))
+           (when file-entry
+             (let* ((file (car file-entry))
+                    (hunks (cdr file-entry))
+                    (sel (gethash file (patch-builder-selected view))))
+               (setf (patch-builder-current-file view) file)
+               (setf (patch-builder-hunk-view view) t)
+               (setf (panel-title (main-panel view))
+                     (format nil "[0] Patch: ~A - Space:toggle a:all n:none Esc:back" file))
+               (setf (panel-items (main-panel view))
+                     (loop for h in hunks
+                           for i from 0
+                           for selected = (member i sel)
+                           collect (if selected
+                                       `(:multi-colored
+                                         (:bright-green ,(format nil "● Hunk ~D: " (1+ i)))
+                                         (:cyan ,(hunk-header h))
+                                         (:bright-black ,(format nil " (~D lines)" (hunk-line-count h))))
+                                       `(:multi-colored
+                                         (:white ,(format nil "○ Hunk ~D: " (1+ i)))
+                                         (:cyan ,(hunk-header h))
+                                         (:bright-black ,(format nil " (~D lines)" (hunk-line-count h)))))))
+               (setf (panel-selected (main-panel view)) 0)))))
+       (return-from handle-key nil))
+      ;; 'P' (capital) opens patch apply dialog
+      ((and (key-event-char key) (char= (key-event-char key) #\P))
+       ;; Count selected hunks
+       (let ((total-selected 0)
+             (total-files 0))
+         (maphash (lambda (file indices)
+                    (declare (ignore file))
+                    (when indices
+                      (incf total-files)
+                      (incf total-selected (length indices))))
+                  (patch-builder-selected view))
+         (if (> total-selected 0)
+             (setf (active-dialog view)
+                   (make-dialog :title "Apply Custom Patch"
+                                :message (format nil "~D hunk~:P from ~D file~:P selected.~%~%Apply patch from commit ~A?"
+                                                 total-selected total-files
+                                                 (subseq (patch-builder-hash view) 0
+                                                         (min 7 (length (patch-builder-hash view)))))
+                                :data (list :patch-action t)
+                                :buttons '("Apply to Index" "New Commit" "Reverse" "Cancel")))
+             (show-toast view "No hunks selected")))
+       (return-from handle-key nil))
+      ;; 'v' preview the accumulated patch
+      ((and (key-event-char key) (char= (key-event-char key) #\v))
+       (let ((patch-text (build-accumulated-patch view)))
+         (if (and patch-text (> (length patch-text) 0))
+             (progn
+               (setf (panel-title (main-panel view))
+                     "[0] Patch Preview (Esc to go back)")
+               (setf (panel-items (main-panel view))
+                     (format-diff-lines patch-text))
+               (setf (panel-selected (main-panel view)) 0))
+             (show-toast view "No hunks selected to preview")))
        (return-from handle-key nil))))
   
   ;; Handle blame mode - consume ALL keys in this mode

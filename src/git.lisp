@@ -479,6 +479,145 @@
       (git-run "diff" (format nil "~A^" hash) hash "--color=always" "--" file)
       (git-run "diff" (format nil "~A^" hash) hash "--color=always")))
 
+;;; Custom Patch Builder
+
+(defun parse-commit-hunks (hash file)
+  "Parse diff output from a commit into individual hunks for a file.
+   Unlike parse-diff-hunks which works on the working tree, this parses
+   the diff between hash^ and hash for the given file."
+  (let* ((diff-output (git-run "diff" "-U3" (format nil "~A^" hash) hash "--" file))
+         (lines (cl-ppcre:split "\\n" diff-output))
+         (hunks nil)
+         (current-hunk nil)
+         (current-content nil))
+    (dolist (line lines)
+      (cond
+        ;; Hunk header: @@ -start,count +start,count @@
+        ((cl-ppcre:scan "^@@" line)
+         ;; Save previous hunk if any
+         (when current-hunk
+           (setf (hunk-content current-hunk) (nreverse current-content))
+           (push current-hunk hunks))
+         ;; Parse new hunk header
+         (multiple-value-bind (match regs)
+             (cl-ppcre:scan-to-strings "^@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@" line)
+           (declare (ignore match))
+           (when regs
+             (setf current-hunk (make-instance 'diff-hunk
+                                                :file file
+                                                :start-line (parse-integer (aref regs 2) :junk-allowed t)
+                                                :line-count (if (aref regs 3)
+                                                                (parse-integer (aref regs 3) :junk-allowed t)
+                                                                1)
+                                                :header line)
+                   current-content (list line)))))
+        ;; Content line (part of current hunk)
+        (current-hunk
+         (push line current-content))))
+    ;; Save last hunk
+    (when current-hunk
+      (setf (hunk-content current-hunk) (nreverse current-content))
+      (push current-hunk hunks))
+    (nreverse hunks)))
+
+(defun build-full-patch (file hunks)
+  "Build a complete patch from selected HUNKS for FILE.
+   Returns a string suitable for git apply."
+  (when hunks
+    (with-output-to-string (out)
+      (format out "--- a/~A~%" file)
+      (format out "+++ b/~A~%" file)
+      (dolist (hunk hunks)
+        (format out "~{~A~%~}" (hunk-content hunk))))))
+
+(defun build-reverse-patch-from-hunk (hunk)
+  "Reverse a hunk: swap + and - lines, swap old/new counts in header."
+  (let* ((content (hunk-content hunk))
+         (header (first content))
+         (body (rest content))
+         (reversed-body
+           (loop for line in body
+                 collect (cond
+                           ((and (> (length line) 0) (char= (char line 0) #\+))
+                            (concatenate 'string "-" (subseq line 1)))
+                           ((and (> (length line) 0) (char= (char line 0) #\-))
+                            (concatenate 'string "+" (subseq line 1)))
+                           (t line))))
+         ;; Swap the old and new in the header
+         (reversed-header
+           (cl-ppcre:regex-replace
+             "@@ -(\\d+(?:,\\d+)?) \\+(\\d+(?:,\\d+)?) @@(.*)"
+             header
+             "@@ -\\2 +\\1 @@\\3")))
+    (cons reversed-header reversed-body)))
+
+(defun apply-patch-to-index (patch-text)
+  "Apply a patch string to the staging area (index).
+   Returns (values success-p message)."
+  (let* ((repo (ensure-repo))
+         (dir (repo-path-dir repo)))
+    (let ((proc (sb-ext:run-program "git" (list "apply" "--cached" "-")
+                                    :input :stream
+                                    :output :stream
+                                    :error :stream
+                                    :directory dir
+                                    :search t
+                                    :wait nil)))
+      (write-string patch-text (sb-ext:process-input proc))
+      (close (sb-ext:process-input proc))
+      (sb-ext:process-wait proc)
+      (let ((exit (sb-ext:process-exit-code proc))
+            (err (let ((s (make-string-output-stream)))
+                   (loop for c = (read-char (sb-ext:process-error proc) nil nil)
+                         while c do (write-char c s))
+                   (get-output-stream-string s))))
+        (if (zerop exit)
+            (values t "Patch applied to index")
+            (values nil (format nil "Patch failed: ~A" (string-trim '(#\Newline) err))))))))
+
+(defun apply-reverse-patch-to-index (patch-text)
+  "Apply a reversed patch to the staging area (undo changes).
+   Returns (values success-p message)."
+  (let* ((repo (ensure-repo))
+         (dir (repo-path-dir repo)))
+    (let ((proc (sb-ext:run-program "git" (list "apply" "--cached" "--reverse" "-")
+                                    :input :stream
+                                    :output :stream
+                                    :error :stream
+                                    :directory dir
+                                    :search t
+                                    :wait nil)))
+      (write-string patch-text (sb-ext:process-input proc))
+      (close (sb-ext:process-input proc))
+      (sb-ext:process-wait proc)
+      (let ((exit (sb-ext:process-exit-code proc))
+            (err (let ((s (make-string-output-stream)))
+                   (loop for c = (read-char (sb-ext:process-error proc) nil nil)
+                         while c do (write-char c s))
+                   (get-output-stream-string s))))
+        (if (zerop exit)
+            (values t "Reverse patch applied")
+            (values nil (format nil "Reverse patch failed: ~A" (string-trim '(#\Newline) err))))))))
+
+(defun create-commit-from-patch (patch-text message)
+  "Apply a patch to the index and create a new commit with MESSAGE.
+   Returns (values success-p result-message)."
+  (multiple-value-bind (ok err) (apply-patch-to-index patch-text)
+    (if ok
+        (let* ((repo (ensure-repo))
+               (dir (repo-path-dir repo)))
+          (let ((proc (sb-ext:run-program "git" (list "commit" "-m" message)
+                                          :output :stream
+                                          :error :stream
+                                          :directory dir
+                                          :search t
+                                          :wait t)))
+            (let ((exit (sb-ext:process-exit-code proc)))
+              (if (zerop exit)
+                  (values t (format nil "Created commit: ~A" message))
+                  (values nil "Commit failed after applying patch")))))
+        (values nil err))))
+
 ;;; Blame
 
 (defclass blame-line ()

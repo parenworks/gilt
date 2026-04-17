@@ -568,12 +568,12 @@ else
     fail "Nerd font icons returned: '$NERD_RESULT' (expected 'ON HAS-ICON')"
 fi
 
-# Test nerd font icons disabled by default
+# Test nerd font icons disabled by default (override git config too)
 NERD_OFF=$(GILT_NERD_FONTS="" sbcl --noinform --non-interactive \
   --eval "$SBCL_INIT" \
   --eval '(ql:quickload :gilt :silent t)' \
   --eval "(progn
-            (setf gilt.views::*nerd-fonts* :unset)
+            (setf gilt.views::*nerd-fonts* nil)
             (let ((ico (gilt.views::icon :branches)))
               (format t \"~A\" (if (= (length ico) 0) \"EMPTY\" \"NOT-EMPTY\"))))" \
   2>/dev/null | tail -1)
@@ -582,6 +582,85 @@ if [ "$NERD_OFF" = "EMPTY" ]; then
     pass "Nerd font icons disabled when not configured"
 else
     fail "Nerd font icons should be empty when disabled: '$NERD_OFF'"
+fi
+
+# ─── Custom Patch Builder Tests ──────────────────────────────────
+section "Custom Patch Builder"
+
+# Test parse-commit-hunks returns hunks for a known commit
+cd "$REPO_DIR"
+# Make a multi-hunk commit for testing
+echo "line1" > patchtest.txt
+echo "line2" >> patchtest.txt
+echo "line3" >> patchtest.txt
+git add patchtest.txt
+git commit -m "patch test base" --quiet
+
+echo "changed1" > patchtest.txt
+echo "line2" >> patchtest.txt
+echo "changed3" >> patchtest.txt
+git add patchtest.txt
+git commit -m "patch test changes" --quiet
+
+PATCH_HASH=$(git rev-parse HEAD)
+
+PATCH_PARSE=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((hunks (gilt.git:parse-commit-hunks \"$PATCH_HASH\" \"patchtest.txt\")))
+              (format t \"~D\" (length hunks))))" \
+  2>/dev/null | tail -1)
+
+if [ -n "$PATCH_PARSE" ] && [ "$PATCH_PARSE" -gt 0 ] 2>/dev/null; then
+    pass "parse-commit-hunks returns $PATCH_PARSE hunk(s) from commit"
+else
+    fail "parse-commit-hunks returned: '$PATCH_PARSE' (expected >0 hunks)"
+fi
+
+# Test build-accumulated-patch produces valid output
+PATCH_BUILD=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let* ((hunks (gilt.git:parse-commit-hunks \"$PATCH_HASH\" \"patchtest.txt\"))
+                   (patch (gilt.git:build-full-patch \"patchtest.txt\" hunks)))
+              (format t \"~A\" (if (and patch (> (length patch) 0)
+                                       (search \"---\" patch)
+                                       (search \"+++ \" patch))
+                                  \"VALID\" \"INVALID\"))))" \
+  2>/dev/null | tail -1)
+
+if [ "$PATCH_BUILD" = "VALID" ]; then
+    pass "build-full-patch produces valid patch with file headers"
+else
+    fail "build-full-patch returned: '$PATCH_BUILD' (expected VALID)"
+fi
+
+# Test patch builder state slots exist on main-view
+PATCH_SLOTS=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (let ((slots '(gilt.views::patch-builder-mode
+                           gilt.views::patch-builder-hash
+                           gilt.views::patch-builder-files
+                           gilt.views::patch-builder-selected
+                           gilt.views::patch-builder-current-file
+                           gilt.views::patch-builder-hunk-view)))
+              (format t \"~D\"
+                (count-if (lambda (s)
+                            (find-method (fdefinition s) nil
+                              (list (find-class 'gilt.views::main-view)) nil))
+                          slots))))" \
+  2>/dev/null | tail -1)
+
+if [ "$PATCH_SLOTS" = "6" ]; then
+    pass "All 6 patch builder slots exist on main-view"
+else
+    fail "Patch builder slots: '$PATCH_SLOTS' found (expected 6)"
 fi
 
 # ─── Summary ─────────────────────────────────────────────────────

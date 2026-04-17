@@ -319,6 +319,12 @@
            #:load-custom-commands
            #:git-diff-lines
            #:git-apply-patch
+           #:parse-commit-hunks
+           #:build-full-patch
+           #:build-reverse-patch-from-hunk
+           #:apply-patch-to-index
+           #:apply-reverse-patch-to-index
+           #:create-commit-from-patch
            #:git-push
            #:git-pull
            #:git-push-interactive
