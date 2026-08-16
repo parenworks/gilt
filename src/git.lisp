@@ -1510,6 +1510,23 @@
       (git-run "push" remote branch)
       (git-run "push")))
 
+(defun git-push-force-with-lease (&optional remote branch)
+  "Force push with lease (safer than force push).
+   Only forces if remote ref hasn't changed since last fetch."
+  (if (and remote branch)
+      (git-run "push" "--force-with-lease" remote branch)
+      (git-run "push" "--force-with-lease")))
+
+(defun git-push-force (&optional remote branch)
+  "Force push (overwrites remote history). Use with caution."
+  (if (and remote branch)
+      (git-run "push" "--force" remote branch)
+      (git-run "push" "--force")))
+
+(defun git-push-set-upstream (remote branch)
+  "Push and set upstream tracking branch."
+  (git-run "push" "--set-upstream" remote branch))
+
 (defun git-pull (&optional remote branch)
   "Pull from remote"
   (if (and remote branch)

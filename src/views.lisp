@@ -1837,30 +1837,44 @@
              ((string= (dialog-title dlg) "Push")
               (let* ((buttons (dialog-buttons dlg))
                      (selected-button (nth (dialog-selected-button dlg) buttons))
-                     (force-p (string= selected-button "Force Push"))
                      (has-upstream (git-branch-has-upstream-p))
                      (branch (git-current-branch))
                      (push-cmd (cond
-                                 ((and force-p has-upstream)
-                                  '("git" "push" "--force-with-lease"))
-                                 (force-p
-                                  (list "git" "push" "--force-with-lease"
-                                        "--set-upstream" "origin" branch))
+                                 ((string= selected-button "Force with Lease")
+                                  (if has-upstream
+                                      '("git" "push" "--force-with-lease")
+                                      (list "git" "push" "--force-with-lease"
+                                            "--set-upstream" "origin" branch)))
+                                 ((string= selected-button "Force Push")
+                                  (if has-upstream
+                                      '("git" "push" "--force")
+                                      (list "git" "push" "--force"
+                                            "--set-upstream" "origin" branch)))
+                                 ((string= selected-button "Set Upstream")
+                                  (list "git" "push" "--set-upstream" "origin" branch))
                                  (has-upstream
                                   '("git" "push"))
                                  (t
-                                  (list "git" "push" "--set-upstream" "origin" branch)))))
-                (log-command view (format nil "~{~A~^ ~}" push-cmd))
-                (setf (active-runner view) (make-process-runner))
-                (setf (runner-title view) (if force-p "Force Pushing..." "Pushing..."))
-                (runner-start (active-runner view) push-cmd)
-                (setf (panel-title (main-panel view)) "[0] Push Output")
-                (setf (panel-items (main-panel view))
-                      (list (cond
-                              (force-p "Starting git push --force-with-lease...")
-                              ((not has-upstream)
-                               (format nil "Setting upstream and pushing ~A..." branch))
-                              (t "Starting git push..."))))))
+                                  (list "git" "push" "--set-upstream" "origin" branch))))
+                     (is-force (or (string= selected-button "Force with Lease")
+                                   (string= selected-button "Force Push"))))
+                (unless (string= selected-button "Cancel")
+                  (log-command view (format nil "~{~A~^ ~}" push-cmd))
+                  (setf (active-runner view) (make-process-runner))
+                  (setf (runner-title view) (if is-force "Force Pushing..." "Pushing..."))
+                  (runner-start (active-runner view) push-cmd)
+                  (setf (panel-title (main-panel view)) "[0] Push Output")
+                  (setf (panel-items (main-panel view))
+                        (list (cond
+                                ((string= selected-button "Force with Lease")
+                                 "Starting git push --force-with-lease...")
+                                ((string= selected-button "Force Push")
+                                 "Starting git push --force...")
+                                ((string= selected-button "Set Upstream")
+                                 (format nil "Setting upstream and pushing ~A..." branch))
+                                ((not has-upstream)
+                                 (format nil "Setting upstream and pushing ~A..." branch))
+                                (t "Starting git push...")))))))
              ;; Pull dialog - start async runner
              ((string= (dialog-title dlg) "Pull")
               (log-command view "git pull")
@@ -3945,13 +3959,13 @@
                           :multiline t
                           :buttons '("Commit" "Cancel")))
        nil)
-      ;; Push - 'P' (capital) opens push confirmation (not in stashes view)
+      ;; Push - 'P' (capital) opens push dialog with options
       ((and (key-event-char key) (char= (key-event-char key) #\P)
             (not (and (= focused-idx 1) (show-stashes view))))
        (setf (active-dialog view)
              (make-dialog :title "Push"
                           :message "Push to origin?"
-                          :buttons '("Push" "Force Push" "Cancel")))
+                          :buttons '("Push" "Force with Lease" "Force Push" "Set Upstream" "Cancel")))
        nil)
       ;; Pull - 'p' (lowercase) opens pull confirmation (not in stashes view)
       ((and (key-event-char key) (char= (key-event-char key) #\p)

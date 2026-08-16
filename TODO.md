@@ -58,7 +58,7 @@
     - Topological ordering — `--topo-order` option (tig)
   - Effort: Medium-Hard — parsing `git log --graph` with lane tracking is non-trivial.
 
-- [ ] **10. Force Push Options**
+- [x] **10. Force Push Options**
   - What gilt has: Basic push with force option.
   - What's missing:
     - `--force-with-lease` — safer force push (lazygit has this as default)

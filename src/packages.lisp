@@ -369,6 +369,10 @@
            #:git-pull
            #:git-push-interactive
            #:git-pull-interactive
+           #:git-push-force-with-lease
+           #:git-push-force
+           #:git-push-set-upstream
+           #:git-current-branch
            #:git-fetch
            #:git-remotes
            #:git-remote-url

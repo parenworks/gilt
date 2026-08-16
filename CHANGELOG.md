@@ -55,6 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--topo-order` flag for cleaner graph layout (no intermixed branch lines)
   - `G` (capital) toggles all-branches mode for the commits panel
   - `git-log-all` data layer function for all-branch commits in topo order
+- **Force push options** — Safer push options with force-with-lease and set-upstream
+  - `P` dialog now offers: Push, Force with Lease, Force Push, Set Upstream
+  - Force with Lease only forces if remote ref hasn't changed since last fetch
+  - Set Upstream pushes and sets tracking branch
+  - `git-push-force-with-lease`, `git-push-force`, `git-push-set-upstream` data layer functions
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context
