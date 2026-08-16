@@ -1877,12 +1877,22 @@
                                 (t "Starting git push...")))))))
              ;; Pull dialog - start async runner
              ((string= (dialog-title dlg) "Pull")
-              (log-command view "git pull")
-              (setf (active-runner view) (make-process-runner))
-              (setf (runner-title view) "Pulling...")
-              (runner-start (active-runner view) '("git" "pull"))
-              (setf (panel-title (main-panel view)) "[0] Pull Output")
-              (setf (panel-items (main-panel view)) (list "Starting git pull...")))
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-button (nth (dialog-selected-button dlg) buttons))
+                     (pull-cmd (cond
+                                 ((string= selected-button "Pull --rebase")
+                                  '("git" "pull" "--rebase"))
+                                 ((string= selected-button "Pull --ff-only")
+                                  '("git" "pull" "--ff-only"))
+                                 (t '("git" "pull")))))
+                (unless (string= selected-button "Cancel")
+                  (log-command view (format nil "~{~A~^ ~}" pull-cmd))
+                  (setf (active-runner view) (make-process-runner))
+                  (setf (runner-title view) "Pulling...")
+                  (runner-start (active-runner view) pull-cmd)
+                  (setf (panel-title (main-panel view)) "[0] Pull Output")
+                  (setf (panel-items (main-panel view))
+                        (list (format nil "Starting ~{~A~^ ~}..." pull-cmd))))))
              ;; Squash dialog
              ((string= (dialog-title dlg) "Squash Commits")
               (let ((msg (dialog-get-text dlg)))
@@ -3973,7 +3983,7 @@
        (setf (active-dialog view)
              (make-dialog :title "Pull"
                           :message "Pull from origin?"
-                          :buttons '("Pull" "Cancel")))
+                          :buttons '("Pull" "Pull --rebase" "Pull --ff-only" "Cancel")))
        nil)
       ;; Undo - 'z' (global)
       ((and (key-event-char key) (char= (key-event-char key) #\z))

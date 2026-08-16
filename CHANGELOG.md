@@ -60,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Force with Lease only forces if remote ref hasn't changed since last fetch
   - Set Upstream pushes and sets tracking branch
   - `git-push-force-with-lease`, `git-push-force`, `git-push-set-upstream` data layer functions
+- **Pull with rebase/FF-only** — Pull options dialog
+  - `p` dialog now offers: Pull, Pull --rebase, Pull --ff-only
+  - Pull --rebase rebases local commits on top of pulled changes
+  - Pull --ff-only only fast-forwards, fails if diverged
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context

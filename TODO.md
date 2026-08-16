@@ -66,7 +66,7 @@
     - Push with `--set-upstream`
   - Effort: Small — add options to push dialog.
 
-- [ ] **11. Pull with Rebase / Pull Fast-Forward Only**
+- [x] **11. Pull with Rebase / Pull Fast-Forward Only**
   - What gilt has: Basic `git pull`.
   - What's missing:
     - `git pull --rebase` — pull with rebase instead of merge
