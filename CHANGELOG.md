@@ -64,6 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `p` dialog now offers: Pull, Pull --rebase, Pull --ff-only
   - Pull --rebase rebases local commits on top of pulled changes
   - Pull --ff-only only fast-forwards, fails if diverged
+- **Clone/Init from UI** — Clone a repository or init a new one from within gilt
+  - `Alt+c` opens Clone dialog, enter URL to clone
+  - `Alt+i` opens Init dialog, initializes git repo in current directory
+  - After cloning, gilt switches to the cloned repository
+  - `git-clone` data layer function
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context

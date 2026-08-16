@@ -2353,6 +2353,30 @@
                    (setf (diff-search-mode view) nil)
                    (setf (diff-search-query view) nil)
                    (setf (diff-search-matches view) nil)))))
+             ;; Clone Repository dialog
+             ((string= (dialog-title dlg) "Clone Repository")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-button (nth (dialog-selected-button dlg) buttons)))
+                (cond
+                  ((string= selected-button "Clone")
+                   (let ((url (first (dialog-input-lines dlg))))
+                     (when (and url (> (length url) 0))
+                       (let ((dest (git-clone url)))
+                         (when dest
+                           (show-toast view (format nil "Cloned to ~A" dest))
+                           ;; Try to switch to the cloned repo
+                           (setf *current-repo*
+                                 (make-instance 'git-repository
+                                                :path (namestring (truename dest))))
+                           (refresh-data view)))))))))
+             ;; Init Repository dialog
+             ((string= (dialog-title dlg) "Init Repository")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-button (nth (dialog-selected-button dlg) buttons)))
+                (when (string= selected-button "Init")
+                  (git-init)
+                  (show-toast view "Repository initialized")
+                  (refresh-data view))))
              ;; Diff Compare dialog
              ((string= (dialog-title dlg) "Diff Compare")
               (let* ((buttons (dialog-buttons dlg))
@@ -5111,6 +5135,24 @@
              (setf (panel-selected (main-panel view))
                    (or prev (first (last matches))))
              (update-main-content view)))))
+      ;; Clone - 'M-c' (Alt+c) opens clone dialog
+      ((and (key-event-char key) (char= (key-event-char key) #\c)
+            (key-event-alt-p key))
+       (setf (active-dialog view)
+             (make-dialog :title "Clone Repository"
+                          :message "Enter repository URL:"
+                          :input-mode t
+                          :data (list :step :url)
+                          :buttons '("Clone" "Cancel")))
+       nil)
+      ;; Init - 'M-i' (Alt+i) opens init dialog
+      ((and (key-event-char key) (char= (key-event-char key) #\i)
+            (key-event-alt-p key))
+       (setf (active-dialog view)
+             (make-dialog :title "Init Repository"
+                          :message "Initialize a new git repository in the current directory?"
+                          :buttons '("Init" "Cancel")))
+       nil)
       ;; Custom command keybindings fallback
       ((and (key-event-char key)
             (let ((custom-cmds (load-custom-commands)))

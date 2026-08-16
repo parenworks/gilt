@@ -71,6 +71,27 @@
     (sb-ext:run-program "/usr/bin/git" '("init")
                         :output s :error nil :search t)))
 
+(defun git-clone (url &optional destination)
+  "Clone a repository from URL into DESTINATION (optional).
+   Returns the destination path on success."
+  (let* ((dest (or destination
+                   (let ((last-slash (position #\/ url :from-end t)))
+                     (if last-slash
+                         (let ((name (subseq url (1+ last-slash))))
+                           (if (and (> (length name) 4)
+                                    (string= (subseq name (- (length name) 4)) ".git"))
+                               (subseq name 0 (- (length name) 4))
+                               name))
+                         url))))
+         (cmd (if destination
+                  (list "git" "clone" url destination)
+                  (list "git" "clone" url))))
+    (let ((output (with-output-to-string (s)
+                    (sb-ext:run-program "/usr/bin/git" (cdr cmd)
+                                        :output s :error s :search t))))
+      (declare (ignore output))
+      dest)))
+
 (defun ensure-repo ()
   "Ensure *current-repo* is initialized"
   (unless *current-repo*

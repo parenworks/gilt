@@ -73,7 +73,7 @@
     - `git pull --ff-only` — fast-forward only pull
   - Effort: Small — add pull options dialog.
 
-- [ ] **12. Clone / Init from UI**
+- [x] **12. Clone / Init from UI**
   - What: Clone a repository or init a new one from within the TUI, not just from CLI.
   - Why it matters: Froggit and gittui support this. Gilt can only operate on existing repos.
   - Effort: Small-Medium — dialog for URL + destination, then `git clone`.
