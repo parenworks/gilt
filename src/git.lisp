@@ -93,22 +93,63 @@
       dest)))
 
 (defun ensure-repo ()
-  "Ensure *current-repo* is initialized"
+  "Ensure *current-repo* is initialized. If not in a git repo, offer
+   options to init, clone, or browse recent repos."
   (unless *current-repo*
     (let ((root (git-toplevel)))
       (unless root
-        (format t "Not a git repository. Create a new git repository? (y/N): ")
+        (format t "Not a git repository.~%")
+        (format t "  [1] Initialize a new repository here~%")
+        (format t "  [2] Clone a repository~%")
+        (format t "  [3] Browse recent repositories~%")
+        (format t "  [q] Quit~%")
+        (format t "Choose an option: ")
         (finish-output)
-        (let ((response (read-line *standard-input* nil "")))
-          (if (member response '("y" "Y" "yes" "Yes") :test #'string=)
-              (progn
-                (git-init)
-                (setf root (git-toplevel))
-                (unless root
-                  (error "Failed to initialize git repository")))
-              (sb-ext:exit :code 0))))
-      (let ((name (car (last (cl-ppcre:split "/" root)))))
-        (setf *current-repo* (make-instance 'git-repository :path root :name name)))))
+        (let ((response (string-trim '(#\Space #\Newline #\Return)
+                                      (read-line *standard-input* nil ""))))
+          (cond
+            ((or (string= response "1") (string-equal response "i")
+                 (string-equal response "init"))
+             (git-init)
+             (setf root (git-toplevel))
+             (unless root
+               (format t "Failed to initialize git repository~%")
+               (sb-ext:exit :code 1)))
+            ((or (string= response "2") (string-equal response "c")
+                 (string-equal response "clone"))
+             (format t "Enter repository URL: ")
+             (finish-output)
+             (let ((url (string-trim '(#\Space #\Newline #\Return)
+                                      (read-line *standard-input* nil ""))))
+               (when (and url (> (length url) 0))
+                 (format t "Cloning ~A...~%" url)
+                 (let ((dest (git-clone url)))
+                   (when dest
+                     (setf root (namestring (truename dest))))))))
+            ((or (string= response "3") (string-equal response "r")
+                 (string-equal response "recent"))
+             (let ((recents (load-recent-repos)))
+               (if recents
+                   (progn
+                     (format t "~&Recent repositories:~%")
+                     (loop for path in recents for i from 1
+                           do (format t "~&  [~D] ~A~%" i path))
+                     (format t "~&Choose number: ")
+                     (finish-output)
+                     (let ((choice (parse-integer (string-trim '(#\Space #\Newline #\Return)
+                                                                (read-line *standard-input* nil "0"))
+                                                   :junk-allowed t)))
+                       (when (and choice (> choice 0) (<= choice (length recents)))
+                         (let ((path (nth (1- choice) recents)))
+                           (when (probe-file path)
+                             (setf root path))))))
+                   (format t "~&No recent repositories found.~%")))
+             (unless root (sb-ext:exit :code 0)))
+            (t (sb-ext:exit :code 0)))))
+      (when root
+        (let ((name (car (last (cl-ppcre:split "/" root)))))
+          (setf *current-repo* (make-instance 'git-repository :path root :name name))
+          (save-recent-repo root)))))
   *current-repo*)
 
 (defvar *parent-repo-stack* nil "Stack of parent repos for submodule navigation")

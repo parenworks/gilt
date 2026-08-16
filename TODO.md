@@ -115,7 +115,7 @@
   - Why it matters: Lazygit has this. Useful for conventional commits.
   - Effort: Small — config + dialog enhancement.
 
-- [ ] **20. Not-In-Repo Behavior**
+- [x] **20. Not-In-Repo Behavior**
   - What: When launched outside a git repo, offer to init, clone, or browse recent repos.
   - Why it matters: Froggit, lazygit, and gittui handle this gracefully. Gilt just errors.
   - Effort: Small-Medium — startup dialog + repo creation.

@@ -103,6 +103,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Prefix pre-filled in commit dialog when on matching branch
   - `load-commit-templates` and `get-commit-template` data layer functions
   - Example config at `commit-templates.example.conf`
+- **Not-in-repo behavior** — Init/clone/browse recent from startup
+  - When started outside a git repo, offers interactive menu:
+    - `[1]` Initialize a new repository here
+    - `[2]` Clone a repository (prompts for URL)
+    - `[3]` Browse recent repositories (numbered list)
+    - `[q]` Quit
+  - Successfully opened repos are saved to recent repos list
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context
