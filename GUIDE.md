@@ -80,6 +80,7 @@ Each commit line shows:
 | `q` | Quit Gilt |
 | `/` | Search commits or filter files/branches/stashes |
 | `:` | Open command palette (searchable menu of all actions) |
+| `!` | Run shell command (vim-style) |
 | `PgUp`/`PgDn` | Page up/down in lists |
 | `+` | Cycle screen mode: normal/half/full |
 | `\` | Toggle split diff (side-by-side) view |

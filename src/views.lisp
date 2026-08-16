@@ -1136,6 +1136,12 @@
 
 (defun update-main-content (view)
   "Update main panel based on focused panel and selection"
+  ;; Don't override main panel when palette or special modes are active
+  (when (or (palette-mode view)
+            (blame-mode view)
+            (trace-mode view)
+            (cherry-pick-mode view))
+    (return-from update-main-content))
   (let* ((focused-idx (view-focused-panel view))
          (panel (nth focused-idx (view-panels view)))
          (selected (panel-selected panel)))
@@ -1594,7 +1600,8 @@
                        "   o          Open in browser (commit or branch URL)"
                        ""
                        " SHELL"
-                       "   :          Run shell command (vim-style)"
+                       "   :          Command palette (searchable menu of all actions)"
+                       "   !          Run shell command (vim-style)"
                        ""
                        " NAVIGATION"
                        "   PgUp/PgDn  Page up/down in lists"
@@ -1711,10 +1718,11 @@
     (write-string (concatenate 'string "╚" (make-string (+ content-width 2) :initial-element #\═) "╝") *terminal-io*)
     ;; Scroll indicator
     (when (> total-lines max-visible)
-      (let ((pct (floor (* 100 (+ scroll-offset (floor visible-lines 2))) total-lines)))
+      (let ((bottom (+ scroll-offset visible-lines))
+            (pct (floor (* 100 (+ scroll-offset visible-lines)) total-lines)))
         (cursor-to (+ start-y visible-lines 1) (+ start-x (- box-width 12)))
         (fg (color-code :bright-yellow))
-        (write-string (format nil "[~D%]" (min 100 pct)) *terminal-io*)
+        (write-string (format nil "[~D%]" (min 100 (max 1 pct))) *terminal-io*)
         (fg (color-code :cyan))))
     (reset)
     (finish-output *terminal-io*)))
@@ -4508,8 +4516,8 @@
                (clear-screen)
                (refresh-data view)))))
        nil)
-      ;; Shell command - ':' (global, vim-style)
-      ((and (key-event-char key) (char= (key-event-char key) #\:))
+      ;; Shell command - '!' (global, vim-style)
+      ((and (key-event-char key) (char= (key-event-char key) #\!))
        (setf (active-dialog view)
              (make-dialog :title "Shell Command"
                           :input-mode t
