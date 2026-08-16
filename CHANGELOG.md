@@ -93,6 +93,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Press `=` on files panel to toggle numstat display
   - Shows added/removed line counts per file from `git diff --numstat`
   - `git-diff-numstat` data layer function
+- **Bulk branch operations** — Multi-select branches for batch delete
+  - `Space` on branches panel toggles branch selection (shown with `+` marker)
+  - `D` deletes all selected branches at once with confirmation dialog
+  - Toast shows count of selected branches
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context

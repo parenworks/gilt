@@ -439,6 +439,8 @@
    (split-diff-p :accessor split-diff-p :initform nil)  ; side-by-side diff mode
    ;; Numstat in file list
    (show-numstat-p :accessor show-numstat-p :initform nil)  ; show +N -M per file
+   ;; Bulk branch operations
+   (selected-branches :accessor selected-branches :initform nil)  ; list of selected branch names
    ;; Interactive rebase mode
    (rebase-mode :accessor rebase-mode :initform nil)
    (rebase-entries :accessor rebase-entries :initform nil)
@@ -802,12 +804,16 @@
                    (numbered-title 3 "Local" '("Remotes" "Tags" "Submodules"))))
          (setf (panel-items (branches-panel view))
                (loop for b in filtered-branches
-                     collect (if (string= b (current-branch view))
-                                 (list :colored :bright-green
-                                       (if (nerd-fonts-p)
-                                           (format nil "~A ~A" (icon :current) b)
-                                           (format nil "* ~A" b)))
-                                 (format nil "  ~A" b))))))))
+                     collect (let ((selected-p (member b (selected-branches view) :test #'string=)))
+                               (if (string= b (current-branch view))
+                                   (list :colored :bright-green
+                                         (if (nerd-fonts-p)
+                                             (format nil "~A ~A~A" (icon :current) b
+                                                     (if selected-p " +" ""))
+                                             (format nil "* ~A~A" b (if selected-p " +" ""))))
+                                   (if selected-p
+                                       (list :colored :bright-yellow (format nil "+ ~A" b))
+                                       (format nil "  ~A" b))))))))))
   ;; Commits panel - show hash (yellow), author initials, circle, and message
   (let* ((commits (if (all-branches-mode view)
                       (git-log-all :count 100)
@@ -2453,6 +2459,17 @@
                   (git-init)
                   (show-toast view "Repository initialized")
                   (refresh-data view))))
+             ;; Bulk Delete Branches dialog
+             ((string= (dialog-title dlg) "Bulk Delete Branches")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-button (nth (dialog-selected-button dlg) buttons)))
+                (when (string= selected-button "Delete All")
+                  (dolist (branch (selected-branches view))
+                    (git-delete-branch branch))
+                  (show-toast view (format nil "Deleted ~D branch~:P"
+                                           (length (selected-branches view))))
+                  (setf (selected-branches view) nil)
+                  (refresh-data view))))
              ;; Diff Compare dialog
              ((string= (dialog-title dlg) "Diff Compare")
               (let* ((buttons (dialog-buttons dlg))
@@ -3939,6 +3956,34 @@
                           (remove hash (copied-commits view) :test #'string=))
                     (push hash (copied-commits view)))
                 (show-toast view (format nil "~D commit~:P copied" (length (copied-commits view)))))))))
+       nil)
+      ;; Space on branches panel - toggle branch selection for bulk ops
+      ((and (key-event-char key) (char= (key-event-char key) #\Space)
+            (= focused-idx 2)
+            (not (show-remote-branches view))
+            (not (show-tags view))
+            (not (show-submodules view)))
+       (let* ((branches (branch-list view))
+              (selected (panel-selected panel)))
+         (when (and branches (< selected (length branches)))
+           (let ((branch (nth selected branches)))
+             (if (member branch (selected-branches view) :test #'string=)
+                 (setf (selected-branches view)
+                       (remove branch (selected-branches view) :test #'string=))
+                 (push branch (selected-branches view)))
+             (show-toast view (format nil "~D branch~:P selected" (length (selected-branches view)))))))
+       nil)
+      ;; Bulk delete selected branches - 'D' with selections on branches panel
+      ((and (key-event-char key) (char= (key-event-char key) #\D)
+            (= focused-idx 2) (selected-branches view)
+            (not (show-remote-branches view))
+            (not (show-tags view))
+            (not (show-submodules view)))
+       (setf (active-dialog view)
+             (make-dialog :title "Bulk Delete Branches"
+                          :message (format nil "Delete ~D selected branch~:P?"
+                                           (length (selected-branches view)))
+                          :buttons '("Delete All" "Cancel")))
        nil)
       ;; Enter on branches - checkout local or track remote
       ;; Enter on stashes view - apply stash

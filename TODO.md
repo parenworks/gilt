@@ -105,7 +105,7 @@
   - Why it matters: Lazygit has this. Quick visual indicator of change size.
   - Effort: Small — `git diff --numstat` parsing.
 
-- [ ] **18. Bulk Branch Operations**
+- [x] **18. Bulk Branch Operations**
   - What: Select multiple branches and delete/merge them in bulk.
   - Why it matters: Lazygit supports bulk branch deletion.
   - Effort: Small-Medium — multi-select + batch operations.
