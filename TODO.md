@@ -130,7 +130,7 @@
   - Why it matters: Forgit has `gclean`. Useful for removing build artifacts.
   - Effort: Small — `git clean -nd` (dry-run) preview + confirm + `git clean -fd`.
 
-- [ ] **23. Format-Patch / Apply-Patch**
+- [x] **23. Format-Patch / Apply-Patch**
   - What: Export commits as `.patch` files and apply patches from files.
   - Why it matters: Magit supports this. Essential for email-based workflows (kernel, etc.).
   - Effort: Small — `git format-patch` + `git am` wrappers.

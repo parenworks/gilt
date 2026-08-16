@@ -119,6 +119,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `K` on files panel shows preview of what would be removed
   - Dialog offers `Clean -fd` (untracked) and `Clean -fdx` (include ignored)
   - `git-clean-dry-run` and `git-clean` data layer functions
+- **Format-patch / apply-patch** — git format-patch + git am wrappers
+  - `F` on commits panel creates a patch file for the selected commit
+  - `A` on files panel opens dialog to apply a patch file
+  - Dialog supports `git apply`, `git am`, and check-only modes
+  - `git-format-patch`, `git-format-patch-single`, `git-apply-patch-file`, `git-am-patch` data layer functions
+- **Makefile fix** — `make install` no longer rebuilds under sudo
+  - `install` target checks for existing binary instead of depending on build target
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context

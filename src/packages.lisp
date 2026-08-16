@@ -498,6 +498,10 @@
            #:git-notes-list
            #:git-clean-dry-run
            #:git-clean
+           #:git-format-patch
+           #:git-format-patch-single
+           #:git-apply-patch-file
+           #:git-am-patch
            ;; Interactive rebase
            #:rebase-todo-entry
            #:make-rebase-todo-entry

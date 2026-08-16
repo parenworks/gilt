@@ -1485,6 +1485,8 @@
                        "   \\            Toggle split diff (side-by-side) view"
                        "   N (commits)  Add/edit git note for selected commit"
                        "   K (files)    git clean - dry-run preview and confirm"
+                       "   F (commits)  Format patch for selected commit"
+                       "   A (files)    Apply patch (git apply / git am)"
                        ""
                        " FILES (panel 2)"
                        "   Space      Stage/unstage file"
@@ -2022,6 +2024,24 @@
                   (log-command view (format nil "git revert ~A" hash))
                   (git-revert hash)
                   (refresh-data view))))
+             ;; Apply Patch dialog
+             ((string= (dialog-title dlg) "Apply Patch")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-button (nth (dialog-selected-button dlg) buttons))
+                     (lines (dialog-input-lines dlg))
+                     (patch-file (format nil "~{~A~^~%~}" lines)))
+                (cond
+                  ((string= selected-button "Apply (git apply)")
+                   (git-apply-patch-file patch-file)
+                   (show-toast view "Patch applied")
+                   (refresh-data view))
+                  ((string= selected-button "Apply (git am)")
+                   (git-am-patch patch-file)
+                   (show-toast view "Patch applied with git am")
+                   (refresh-data view))
+                  ((string= selected-button "Check")
+                   (git-apply-patch-file patch-file :check t)
+                   (show-toast view "Patch check passed")))))
              ;; git clean dialog
              ((string= (dialog-title dlg) "git clean")
               (let* ((buttons (dialog-buttons dlg))
@@ -5107,6 +5127,28 @@
                    (make-dialog :title "Amend Commit"
                                 :message "Amend HEAD with staged changes?"
                                 :buttons '("Amend" "Amend with new message" "Cancel"))))))
+       nil)
+      ;; Format-patch - 'F' (capital, when on commits panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\F)
+            (= focused-idx 3))
+       (let* ((commits (commit-list view))
+              (selected (panel-selected panel)))
+         (when (and commits (< selected (length commits)))
+           (let* ((commit (nth selected commits))
+                  (hash (log-entry-hash commit)))
+             (let ((patches (git-format-patch-single hash)))
+               (if (and patches (> (length patches) 0))
+                   (show-toast view (format nil "Created: ~A" patches))
+                   (show-toast view "Failed to create patch")))))
+       nil))
+      ;; Apply patch - 'A' (capital, when on files panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\A)
+            (= focused-idx 1))
+       (setf (active-dialog view)
+             (make-dialog :title "Apply Patch"
+                          :message "Enter patch file path:"
+                          :input-mode t
+                          :buttons '("Apply (git apply)" "Apply (git am)" "Check" "Cancel")))
        nil)
       ;; git clean - 'K' (capital, when on files panel) to preview and clean
       ((and (key-event-char key) (char= (key-event-char key) #\K)

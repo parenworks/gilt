@@ -2391,6 +2391,36 @@
     (when ignored (push "-x" (cdr (last args))))
     (apply #'git-run args)))
 
+;;; Format-patch / apply-patch support
+
+(defun git-format-patch (commit &key (output-dir "."))
+  "Generate patch files for commits from COMMIT to HEAD.
+   Returns list of generated patch filenames."
+  (let ((output (git-run "format-patch" "-o" output-dir commit)))
+    (cl-ppcre:split "\\n" (string-trim '(#\Newline #\Space) output))))
+
+(defun git-format-patch-single (commit &key (output-dir "."))
+  "Generate a single patch file for one commit.
+   Returns the patch filename."
+  (let ((output (git-run "format-patch" "-1" "-o" output-dir commit)))
+    (string-trim '(#\Newline #\Space) output)))
+
+(defun git-apply-patch-file (patch-file &key (check nil) (signoff nil))
+  "Apply a patch file.
+   :CHECK - check only, don't apply
+   :SIGNOFF - add Signed-off-by line"
+  (let ((args (list "apply")))
+    (when check (push "--check" (cdr (last args))))
+    (when signoff (push "--signoff" (cdr (last args))))
+    (apply #'git-run (append args (list patch-file)))))
+
+(defun git-am-patch (patch-file &key (signoff nil))
+  "Apply a patch using git am (mailbox format).
+   :SIGNOFF - add Signed-off-by line"
+  (let ((args (list "am")))
+    (when signoff (push "--signoff" (cdr (last args))))
+    (apply #'git-run (append args (list patch-file)))))
+
 ;;; Clipboard support
 
 (defun copy-to-clipboard (text)
