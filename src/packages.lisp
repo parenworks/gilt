@@ -496,6 +496,8 @@
            #:git-notes-add
            #:git-notes-remove
            #:git-notes-list
+           #:git-clean-dry-run
+           #:git-clean
            ;; Interactive rebase
            #:rebase-todo-entry
            #:make-rebase-todo-entry

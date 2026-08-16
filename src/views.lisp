@@ -1484,6 +1484,7 @@
                        "   :            Command palette (searchable menu of all actions)"
                        "   \\            Toggle split diff (side-by-side) view"
                        "   N (commits)  Add/edit git note for selected commit"
+                       "   K (files)    git clean - dry-run preview and confirm"
                        ""
                        " FILES (panel 2)"
                        "   Space      Stage/unstage file"
@@ -2021,6 +2022,19 @@
                   (log-command view (format nil "git revert ~A" hash))
                   (git-revert hash)
                   (refresh-data view))))
+             ;; git clean dialog
+             ((string= (dialog-title dlg) "git clean")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-button (nth (dialog-selected-button dlg) buttons)))
+                (cond
+                  ((string= selected-button "Clean -fd")
+                   (git-clean :directories t :force t)
+                   (show-toast view "Cleaned untracked files")
+                   (refresh-data view))
+                  ((string= selected-button "Clean -fdx")
+                   (git-clean :directories t :force t :ignored t)
+                   (show-toast view "Cleaned untracked and ignored files")
+                   (refresh-data view)))))
              ;; Git Note dialog
              ((string= (dialog-title dlg) "Git Note")
               (let* ((buttons (dialog-buttons dlg))
@@ -5093,6 +5107,18 @@
                    (make-dialog :title "Amend Commit"
                                 :message "Amend HEAD with staged changes?"
                                 :buttons '("Amend" "Amend with new message" "Cancel"))))))
+       nil)
+      ;; git clean - 'K' (capital, when on files panel) to preview and clean
+      ((and (key-event-char key) (char= (key-event-char key) #\K)
+            (= focused-idx 1))
+       (let ((preview (git-clean-dry-run :directories t :force t)))
+         (if (and preview (some (lambda (l) (> (length l) 0)) preview))
+             (setf (active-dialog view)
+                   (make-dialog :title "git clean"
+                                :message (format nil "Would remove ~D item~:P:~%~{  ~A~^~%~}"
+                                                 (length preview) preview)
+                                :buttons '("Clean -fd" "Clean -fdx" "Cancel")))
+             (show-toast view "Nothing to clean")))
        nil)
       ;; Git notes - 'N' (capital, when on commits panel) to add/edit note
       ((and (key-event-char key) (char= (key-event-char key) #\N)

@@ -2366,6 +2366,31 @@
                     (when (>= (length parts) 2)
                       (cons (first parts) (second parts)))))))
 
+;;; git clean support
+
+(defun git-clean-dry-run (&key (directories nil) (force nil) (ignored nil))
+  "Preview what git clean would remove. Returns list of paths.
+   :DIRECTORIES - include untracked directories
+   :FORCE - force clean (overrides safety check)
+   :IGNORED - include ignored files"
+  (let ((args (list "clean" "--dry-run")))
+    (when directories (push "-d" (cdr (last args))))
+    (when force (push "-f" (cdr (last args))))
+    (when ignored (push "-x" (cdr (last args))))
+    (let ((output (apply #'git-run args)))
+      (cl-ppcre:split "\\n" (string-trim '(#\Newline #\Space) output)))))
+
+(defun git-clean (&key (directories nil) (force nil) (ignored nil))
+  "Remove untracked files. Use git-clean-dry-run first to preview.
+   :DIRECTORIES - remove untracked directories too
+   :FORCE - force clean
+   :IGNORED - remove ignored files too"
+  (let ((args (list "clean")))
+    (when directories (push "-d" (cdr (last args))))
+    (when force (push "-f" (cdr (last args))))
+    (when ignored (push "-x" (cdr (last args))))
+    (apply #'git-run args)))
+
 ;;; Clipboard support
 
 (defun copy-to-clipboard (text)

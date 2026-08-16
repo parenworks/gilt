@@ -125,7 +125,7 @@
   - Why it matters: Magit supports this. Useful for adding context to commits without changing them.
   - Effort: Small — `git notes add/show` wrappers.
 
-- [ ] **22. `git clean` Integration**
+- [x] **22. `git clean` Integration**
   - What: Interactive `git clean` to remove untracked files.
   - Why it matters: Forgit has `gclean`. Useful for removing build artifacts.
   - Effort: Small — `git clean -nd` (dry-run) preview + confirm + `git clean -fd`.

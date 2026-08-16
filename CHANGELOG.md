@@ -115,6 +115,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Notes shown in commit detail view
   - Dialog supports Save, Delete, and Cancel
   - `git-notes-show`, `git-notes-add`, `git-notes-remove`, `git-notes-list` data layer functions
+- **git clean integration** — Dry-run preview + confirm + clean -fd
+  - `K` on files panel shows preview of what would be removed
+  - Dialog offers `Clean -fd` (untracked) and `Clean -fdx` (include ignored)
+  - `git-clean-dry-run` and `git-clean` data layer functions
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context
