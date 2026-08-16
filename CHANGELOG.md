@@ -85,6 +85,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `H` in tree mode toggles syntax highlighting on/off
   - Falls back to plain text if bat is not installed
   - `bat-available-p` and `bat-highlight` data layer functions
+- **Split diff view** — Side-by-side diff rendering
+  - Press `\` to toggle split diff mode
+  - Uses `git diff --side-by-side` with 200-column width
+  - `git-diff-split` and `git-diff-staged-split` data layer functions
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context

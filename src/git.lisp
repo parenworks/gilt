@@ -241,6 +241,28 @@
 
 ;;; Diff
 
+(defun git-diff-split (&key (file nil) (context-size 3) ignore-whitespace)
+  "Get side-by-side diff. Returns raw text with left/right columns."
+  (let ((args (list "diff" "--color=always" "--side-by-side"
+                    (format nil "-U~D" context-size)
+                    "--width=200")))
+    (when ignore-whitespace (push "-w" (cdr (last args))))
+    (when *rename-threshold* (push (rename-threshold-arg) (cdr (last args))))
+    (if file
+        (apply #'git-run (append args (list "--" file)))
+        (apply #'git-run args))))
+
+(defun git-diff-staged-split (&key (file nil) (context-size 3) ignore-whitespace)
+  "Get side-by-side staged diff. Returns raw text with left/right columns."
+  (let ((args (list "diff" "--cached" "--color=always" "--side-by-side"
+                    (format nil "-U~D" context-size)
+                    "--width=200")))
+    (when ignore-whitespace (push "-w" (cdr (last args))))
+    (when *rename-threshold* (push (rename-threshold-arg) (cdr (last args))))
+    (if file
+        (apply #'git-run (append args (list "--" file)))
+        (apply #'git-run args))))
+
 (defun git-diff (&key (file nil) (context-size 3) ignore-whitespace)
   "Get unstaged diff, optionally for specific file"
   (let ((args (list "diff" "--color=always"

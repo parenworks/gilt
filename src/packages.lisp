@@ -214,6 +214,8 @@
            #:git-repo-state
            #:git-diff
            #:git-diff-staged
+           #:git-diff-split
+           #:git-diff-staged-split
            #:git-log
            #:git-log-graph
            #:git-log-all

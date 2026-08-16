@@ -435,6 +435,8 @@
    (palette-filtered :accessor palette-filtered :initform nil)  ; filtered commands
    ;; Syntax highlighting
    (syntax-highlight-p :accessor syntax-highlight-p :initform t)  ; use bat for syntax highlighting
+   ;; Split diff view
+   (split-diff-p :accessor split-diff-p :initform nil)  ; side-by-side diff mode
    ;; Interactive rebase mode
    (rebase-mode :accessor rebase-mode :initform nil)
    (rebase-entries :accessor rebase-entries :initform nil)
@@ -1196,14 +1198,23 @@
             (when (and entries (< selected (length entries)))
               (let* ((entry (nth selected entries))
                      (file (status-entry-file entry))
-                     (diff (if (status-entry-staged-p entry)
-                               (git-diff-staged :file file
-                                                :context-size (diff-context-size view)
-                                                :ignore-whitespace (diff-ignore-whitespace view))
-                               (git-diff :file file
-                                         :context-size (diff-context-size view)
-                                         :ignore-whitespace (diff-ignore-whitespace view)))))
-                (setf (panel-title (main-panel view)) "[0] Diff")
+                     (diff (if (split-diff-p view)
+                               (if (status-entry-staged-p entry)
+                                   (git-diff-staged-split :file file
+                                                          :context-size (diff-context-size view)
+                                                          :ignore-whitespace (diff-ignore-whitespace view))
+                                   (git-diff-split :file file
+                                                   :context-size (diff-context-size view)
+                                                   :ignore-whitespace (diff-ignore-whitespace view)))
+                               (if (status-entry-staged-p entry)
+                                   (git-diff-staged :file file
+                                                    :context-size (diff-context-size view)
+                                                    :ignore-whitespace (diff-ignore-whitespace view))
+                                   (git-diff :file file
+                                             :context-size (diff-context-size view)
+                                             :ignore-whitespace (diff-ignore-whitespace view))))))
+                (setf (panel-title (main-panel view))
+                      (if (split-diff-p view) "[0] Split Diff" "[0] Diff"))
                 (setf (panel-items (main-panel view))
                       (format-diff-lines diff))))))))
       ;; Commits panel focused - show commit details or graph
@@ -1445,6 +1456,7 @@
                        "   Enter      Select/expand item"
                        "   / (in diff)  Search within diff, n/N to navigate matches"
                        "   :            Command palette (searchable menu of all actions)"
+                       "   \\            Toggle split diff (side-by-side) view"
                        ""
                        " FILES (panel 2)"
                        "   Space      Stage/unstage file"
@@ -5252,6 +5264,12 @@
              (setf (panel-selected (main-panel view))
                    (or prev (first (last matches))))
              (update-main-content view)))))
+      ;; Split diff toggle - '\' (backslash)
+      ((and (key-event-char key) (char= (key-event-char key) #\\))
+       (setf (split-diff-p view) (not (split-diff-p view)))
+       (show-toast view (format nil "Split diff: ~A" (if (split-diff-p view) "ON" "OFF")))
+       (update-main-content view)
+       nil)
       ;; Command palette - ':' opens searchable command menu
       ((and (key-event-char key) (char= (key-event-char key) #\:))
        (setf (palette-mode view) t)

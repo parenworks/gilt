@@ -95,7 +95,7 @@
   - Why it matters: Gitui has this via syntect. Makes diffs much more readable.
   - Effort: Hard in Common Lisp — would need a syntax highlighting library or external tool integration (bat, etc.).
 
-- [ ] **16. Split Diff View**
+- [x] **16. Split Diff View**
   - What: Show diff in split (side-by-side) mode instead of unified.
   - Why it matters: Gittui and gitkraft support this. Many users prefer side-by-side.
   - Effort: Medium — `git diff --word-diff=porcelain` or custom rendering.
