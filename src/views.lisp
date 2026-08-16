@@ -380,6 +380,7 @@
    (runner-title :accessor runner-title :initform nil)
    ;; Help overlay
    (help-visible :accessor help-visible :initform nil)
+   (help-scroll-offset :accessor help-scroll-offset :initform 0)
    ;; Blame mode
    (blame-mode :accessor blame-mode :initform nil)
    (blame-data :accessor blame-data :initform nil)
@@ -1481,9 +1482,9 @@
       (draw-dialog (active-dialog view) width height))
     ;; Draw help overlay on top of everything
     (when (help-visible view)
-      (draw-help-overlay width height))))
+      (draw-help-overlay view width height))))
 
-(defun draw-help-overlay (width height)
+(defun draw-help-overlay (view width height)
   "Draw the help overlay showing all keybindings"
   (let* ((content-width 52)  ; Fixed content width
          (box-width (+ content-width 4))  ; Add space for borders and padding
@@ -1669,21 +1670,26 @@
                        "   ?          Toggle this help"
                        "   q          Quit"
                        ""
-                       "            Press any key to close"))
-         (help-height (min (+ (length help-lines) 2) (- height 2)))
+                       "            j/k scroll  q/Esc close"))
+         (total-lines (length help-lines))
+         (max-visible (- height 4))  ; max content lines that fit
+         (help-height (min (+ max-visible 2) (+ total-lines 2)))
+         (scroll-offset (min (help-scroll-offset view)
+                             (max 0 (- total-lines max-visible))))
+         (visible-lines (min max-visible (- total-lines scroll-offset)))
          (start-x (max 1 (floor (- width box-width) 2)))
-         (start-y (max 1 (floor (- height help-height) 2))))
+         (start-y (max 1 (floor (- height (+ visible-lines 2)) 2))))
     ;; Set style - cyan on black (less harsh than blue)
     (fg (color-code :cyan))
     (bg (color-code :black))
     ;; Top border
     (cursor-to start-y start-x)
     (write-string (concatenate 'string "╔" (make-string (+ content-width 2) :initial-element #\═) "╗") *terminal-io*)
-    ;; Content lines
-    (loop for line in help-lines
+    ;; Content lines (with scroll offset)
+    (loop for line in (nthcdr scroll-offset help-lines)
           for y from (1+ start-y)
           for i from 0
-          while (< i (- help-height 2))
+          while (< i visible-lines)
           do (cursor-to y start-x)
              (write-string "║ " *terminal-io*)
              ;; Check if this is a section header (starts with space then uppercase)
@@ -1701,8 +1707,15 @@
                (write-string (make-string padding :initial-element #\Space) *terminal-io*))
              (write-string " ║" *terminal-io*))
     ;; Bottom border
-    (cursor-to (+ start-y help-height -1) start-x)
+    (cursor-to (+ start-y visible-lines 1) start-x)
     (write-string (concatenate 'string "╚" (make-string (+ content-width 2) :initial-element #\═) "╝") *terminal-io*)
+    ;; Scroll indicator
+    (when (> total-lines max-visible)
+      (let ((pct (floor (* 100 (+ scroll-offset (floor visible-lines 2))) total-lines)))
+        (cursor-to (+ start-y visible-lines 1) (+ start-x (- box-width 12)))
+        (fg (color-code :bright-yellow))
+        (write-string (format nil "[~D%]" (min 100 pct)) *terminal-io*)
+        (fg (color-code :cyan))))
     (reset)
     (finish-output *terminal-io*)))
 
@@ -1819,14 +1832,54 @@
   (incf (spinner-frame view)))
 
 (defmethod handle-key ((view main-view) key)
-  ;; If help overlay is visible, any key dismisses it
+  ;; If help overlay is visible, handle scroll/dismiss
   (when (help-visible view)
-    (setf (help-visible view) nil)
-    (return-from handle-key nil))
-  
+    (cond
+      ;; Escape or q or ? dismisses help
+      ((or (eq (key-event-code key) +key-escape+)
+           (and (key-event-char key) (char= (key-event-char key) #\q))
+           (and (key-event-char key) (char= (key-event-char key) #\?)))
+       (setf (help-visible view) nil)
+       (setf (help-scroll-offset view) 0)
+       (return-from handle-key nil))
+      ;; j/Down scrolls down
+      ((or (eq (key-event-code key) +key-down+)
+           (and (key-event-char key) (char= (key-event-char key) #\j)))
+       (incf (help-scroll-offset view))
+       (return-from handle-key nil))
+      ;; k/Up scrolls up
+      ((or (eq (key-event-code key) +key-up+)
+           (and (key-event-char key) (char= (key-event-char key) #\k)))
+       (when (> (help-scroll-offset view) 0)
+         (decf (help-scroll-offset view)))
+       (return-from handle-key nil))
+      ;; PgDn scrolls by page
+      ((eq (key-event-code key) +key-page-down+)
+       (incf (help-scroll-offset view) 20)
+       (return-from handle-key nil))
+      ;; PgUp scrolls up by page
+      ((eq (key-event-code key) +key-page-up+)
+       (setf (help-scroll-offset view)
+             (max 0 (- (help-scroll-offset view) 20)))
+       (return-from handle-key nil))
+      ;; g goes to top
+      ((and (key-event-char key) (char= (key-event-char key) #\g))
+       (setf (help-scroll-offset view) 0)
+       (return-from handle-key nil))
+      ;; G goes to bottom
+      ((and (key-event-char key) (char= (key-event-char key) #\G))
+       (setf (help-scroll-offset view) 200)
+       (return-from handle-key nil))
+      ;; Any other key also dismisses (for backward compat)
+      (t
+       (setf (help-visible view) nil)
+       (setf (help-scroll-offset view) 0)
+       (return-from handle-key nil))))
+
   ;; Toggle help with ?
   (when (and (key-event-char key) (char= (key-event-char key) #\?))
     (setf (help-visible view) t)
+    (setf (help-scroll-offset view) 0)
     (return-from handle-key nil))
   
   ;; If runner is active, handle runner state

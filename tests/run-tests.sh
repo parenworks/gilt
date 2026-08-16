@@ -882,6 +882,199 @@ else
     fail "Rename threshold returned: '$RENAME' (expected 'NIL -M50% NIL')"
 fi
 
+# ─── 9. v0.19.0 Feature Tests ────────────────────────────────────
+section "9. v0.19.0 Features"
+
+# Test: bat availability check
+BAT_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (gilt.git:bat-available-p))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$BAT_OUTPUT" != "NIL" ]; then
+    pass "bat-available-p: detected bat/batcat ($BAT_OUTPUT)"
+else
+    skip "bat-available-p" "bat not installed"
+fi
+
+# Test: bat-highlight produces output
+if [ "$BAT_OUTPUT" != "NIL" ]; then
+    HL_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+        --eval '(require :asdf)' \
+        --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+        --eval '(ql:quickload :gilt)' \
+        --eval '(format t "~A" (length (gilt.git:bat-highlight "(defun foo () 42)" "lisp")))' \
+        --eval '(quit)' 2>&1 | tail -1)
+    if [ -n "$HL_OUTPUT" ] && [ "$HL_OUTPUT" -gt 0 ] 2>/dev/null; then
+        pass "bat-highlight: produced $HL_OUTPUT chars of output"
+    else
+        fail "bat-highlight: no output" "length=$HL_OUTPUT"
+    fi
+else
+    skip "bat-highlight" "bat not installed"
+fi
+
+# Test: git-diff-numstat
+NUMSTAT_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (length (gilt.git:git-diff-numstat)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$NUMSTAT_OUTPUT" ] && [ "$NUMSTAT_OUTPUT" -ge 0 ] 2>/dev/null; then
+    pass "git-diff-numstat: returned $NUMSTAT_OUTPUT entries"
+else
+    fail "git-diff-numstat: invalid output" "$NUMSTAT_OUTPUT"
+fi
+
+# Test: git-diff-split
+SPLIT_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (length (gilt.git:git-diff-split)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$SPLIT_OUTPUT" ] && [ "$SPLIT_OUTPUT" -ge 0 ] 2>/dev/null; then
+    pass "git-diff-split: returned $SPLIT_OUTPUT chars"
+else
+    fail "git-diff-split: invalid output" "$SPLIT_OUTPUT"
+fi
+
+# Test: git-diff-staged-split
+STAGED_SPLIT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (length (gilt.git:git-diff-staged-split)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$STAGED_SPLIT" ] && [ "$STAGED_SPLIT" -ge 0 ] 2>/dev/null; then
+    pass "git-diff-staged-split: returned $STAGED_SPLIT chars"
+else
+    fail "git-diff-staged-split: invalid output" "$STAGED_SPLIT"
+fi
+
+# Test: git-clean-dry-run
+CLEAN_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (length (gilt.git:git-clean-dry-run :directories t :force t)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$CLEAN_OUTPUT" ] && [ "$CLEAN_OUTPUT" -ge 0 ] 2>/dev/null; then
+    pass "git-clean-dry-run: returned $CLEAN_OUTPUT items"
+else
+    fail "git-clean-dry-run: invalid output" "$CLEAN_OUTPUT"
+fi
+
+# Test: git-notes functions
+NOTES_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(gilt.git:git-notes-add "HEAD" "test note")' \
+    --eval '(format t "~A" (gilt.git:git-notes-show "HEAD"))' \
+    --eval '(gilt.git:git-notes-remove "HEAD")' \
+    --eval '(quit)' 2>&1 | tail -1)
+if echo "$NOTES_OUTPUT" | grep -q "test note"; then
+    pass "git-notes: add/show/remove cycle works"
+else
+    fail "git-notes: add/show/remove failed" "$NOTES_OUTPUT"
+fi
+
+# Test: git-notes-list
+NOTES_LIST=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (length (gilt.git:git-notes-list)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$NOTES_LIST" ] && [ "$NOTES_LIST" -ge 0 ] 2>/dev/null; then
+    pass "git-notes-list: returned $NOTES_LIST entries"
+else
+    fail "git-notes-list: invalid output" "$NOTES_LIST"
+fi
+
+# Test: git-format-patch-single
+PATCH_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (gilt.git:git-format-patch-single "HEAD" :output-dir "/tmp"))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if echo "$PATCH_OUTPUT" | grep -q "\.patch"; then
+    pass "git-format-patch-single: created $PATCH_OUTPUT"
+    rm -f "/tmp/$(basename "$PATCH_OUTPUT")" 2>/dev/null
+else
+    fail "git-format-patch-single: no patch file" "$PATCH_OUTPUT"
+fi
+
+# Test: git-branch-ahead-behind
+DIVERGE_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (gilt.git:git-branch-ahead-behind "main"))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$DIVERGE_OUTPUT" ]; then
+    pass "git-branch-ahead-behind: returned $DIVERGE_OUTPUT"
+else
+    fail "git-branch-ahead-behind: no output"
+fi
+
+# Test: git-submodule-conflicts
+SUB_CONFLICTS=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (length (gilt.git:git-submodule-conflicts)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$SUB_CONFLICTS" ] && [ "$SUB_CONFLICTS" -ge 0 ] 2>/dev/null; then
+    pass "git-submodule-conflicts: returned $SUB_CONFLICTS conflicts"
+else
+    fail "git-submodule-conflicts: invalid output" "$SUB_CONFLICTS"
+fi
+
+# Test: commit templates config
+# Use a temp HOME with quicklisp symlinked so SBCL can load everything
+REAL_HOME="$HOME"
+TMPL_HOME=$(mktemp -d)
+mkdir -p "$TMPL_HOME/.config/gilt"
+cat > "$TMPL_HOME/.config/gilt/commit-templates.conf" << TMPL_EOF
+feature/=feat:
+bugfix/=fix:
+main=chore:
+TMPL_EOF
+ln -s "$REAL_HOME/quicklisp" "$TMPL_HOME/quicklisp" 2>/dev/null
+# Use separate --eval forms so require:asdf loads before referencing asdf: package
+TMPL_OUTPUT=$(HOME="$TMPL_HOME" sbcl --noinform --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(load \"$TMPL_HOME/quicklisp/setup.lisp\")" \
+    --eval "(push #p\"$GILT_SRC/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:load-commit-templates)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$TMPL_OUTPUT" = "3" ] 2>/dev/null; then
+    pass "load-commit-templates: parsed $TMPL_OUTPUT templates"
+else
+    fail "load-commit-templates: expected 3, got $TMPL_OUTPUT"
+fi
+
+# Test: get-commit-template matching
+TMPL_MATCH=$(HOME="$TMPL_HOME" sbcl --noinform --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(load \"$TMPL_HOME/quicklisp/setup.lisp\")" \
+    --eval "(push #p\"$GILT_SRC/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (gilt.git:get-commit-template "feature/add-cool-thing"))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$TMPL_MATCH" = "feat:" ]; then
+    pass "get-commit-template: matched 'feature/' → 'feat:'"
+else
+    fail "get-commit-template: expected 'feat:', got '$TMPL_MATCH'"
+fi
+rm -rf "$TMPL_HOME"
+
 # ─── Summary ─────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════"

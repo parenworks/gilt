@@ -131,3 +131,49 @@
 - [x] **Git-flow integration** — git-flow init/start/finish workflows
 - [x] **Custom patch building** — select individual lines from commits to build patches
 - [x] **Create pull request** — open PR creation from branches panel
+
+---
+
+## v0.18.0 - v0.19.0 Features
+
+### Added in v0.18.0
+
+- [x] **Reflog viewer** — browse git reflog entries in files panel
+- [x] **Grep view** — search file contents across the repo with `git grep`
+- [x] **Tree/Blob view** — browse directory tree of any commit and view file contents
+- [x] **Multi-commit cherry-pick** — copy multiple commits and cherry-pick all at once
+- [x] **File content view** — view file content at any ref with `git-show-file`
+- [x] **Line range tracing** — `git log -L` trace in blame mode with `L` key
+- [x] **Blame enhancements** — parent blame (`p`), copy detection (`C`), open in editor (`o`)
+- [x] **Diff search** — search within diff view with `/`, navigate matches with `n`/`N`
+- [x] **Commit graph improvements** — `--topo-order` and all-branches mode with `G`
+- [x] **Force push options** — `--force-with-lease`, push to specific remote, set upstream
+- [x] **Pull with rebase/FF-only** — pull dialog with rebase and fast-forward only options
+- [x] **Clone/Init from UI** — `M-c` for clone, `M-i` for init dialogs
+- [x] **Configurable keybindings** — context-based keybinding config file
+
+### Added in v0.19.0
+
+- [x] **Command palette** — `:` opens searchable menu of all actions
+- [x] **Syntax highlighting in diffs** — color-code file content by language using bat
+- [x] **Split diff view** — side-by-side diff rendering with `\` toggle
+- [x] **Numstat in file list** — show +N -M per file with `=` toggle
+- [x] **Bulk branch operations** — multi-select branches with `Space`, batch delete with `D`
+- [x] **Commit message templates** — configurable prefixes per branch pattern
+- [x] **Not-in-repo behavior** — init/clone/browse recent from startup menu
+- [x] **Git notes support** — add/edit/view git notes with `N` on commits panel
+- [x] **git clean integration** — dry-run preview + confirm + clean -fd with `K`
+- [x] **Format-patch / apply-patch** — git format-patch + git am wrappers with `F`/`A`
+- [x] **Submodule conflict resolution** — conflict detection + resolution UI with `M`
+- [x] **Divergence indicators** — ahead/behind counts in branch list with `%` toggle
+
+---
+
+## Future Ideas
+
+- [ ] **Test suite** — comprehensive automated test suite
+- [ ] **Plugin system** — user-defined extensions
+- [ ] **Theming** — customizable color schemes
+- [ ] **Mouse support improvements** — click to select, drag to scroll
+- [ ] **Windows support** — native Windows terminal compatibility
+- [ ] **Performance profiling** — optimize for large repositories

@@ -37,6 +37,19 @@ A LazyGit-style Git TUI written in Common Lisp.
 - **Custom keybindings** - Define shell commands in `~/.config/gilt/commands.conf`
 - **Status bar** - Branch tracking info and operation status
 - **Cross-platform Unix support** - Works on NixOS, standard Linux, macOS, WSL2
+- **Command palette** - Press `:` to search and execute any action by name
+- **Syntax highlighting** - File content highlighted via `bat` integration
+- **Split diff view** - Side-by-side diff rendering with `\` toggle
+- **Numstat display** - Show +N -M per file with `=` toggle
+- **Bulk branch operations** - Multi-select branches with `Space`, batch delete
+- **Commit message templates** - Auto-prefix commits based on branch name
+- **Git notes** - Add/edit/view notes on commits with `N`
+- **git clean** - Dry-run preview and confirm with `K`
+- **Format-patch / apply-patch** - Export and import patches with `F`/`A`
+- **Submodule conflict resolution** - Detect and resolve with `M`
+- **Divergence indicators** - Ahead/behind counts with `%` toggle
+- **Not-in-repo behavior** - Init/clone/browse recent from startup
+- **Configurable keybindings** - Context-based keybinding config file
 
 ## Requirements
 
@@ -83,9 +96,11 @@ gilt
 See **[GUIDE.md](GUIDE.md)** for the complete user guide including:
 
 - Screen layout and panel descriptions
-- All keybindings
-- Common workflows (staging, committing, merging, squashing, etc.)
-- New features: blame view, commit search, tags, remotes, submodules, worktrees, config viewer
+- All keybindings (global, per-panel, and view-specific)
+- Common workflows (staging, committing, merging, squashing, cherry-picking, rebasing, etc.)
+- New features: command palette, syntax highlighting, split diff, numstat, bulk branch ops,
+  commit templates, git notes, git clean, format-patch, submodule conflicts, divergence indicators
+- Configurable keybindings and commit templates
 - Troubleshooting tips
 
 See **[CHANGELOG.md](CHANGELOG.md)** for version history.

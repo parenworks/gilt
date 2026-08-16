@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-17
+
+### Added
+
+- **Command palette** — Searchable menu of all actions
+  - Press `:` to open the command palette
+  - Type to filter commands by name
+  - `Enter` executes the selected command
+  - `j`/`k` or arrow keys to navigate, `Esc` to cancel
+- **Syntax highlighting in diffs** — Color-code file content by language using bat
+  - Blob/tree view uses `bat` (or `batcat`) for syntax highlighting
+  - `H` in tree mode toggles syntax highlighting on/off
+  - Falls back to plain text if bat is not installed
+  - `bat-available-p` and `bat-highlight` data layer functions
+- **Split diff view** — Side-by-side diff rendering
+  - Press `\` to toggle split diff mode
+  - Uses `git diff --side-by-side` with 200-column width
+  - `git-diff-split` and `git-diff-staged-split` data layer functions
+- **Numstat in file list** — Show +N -M per file in the files panel
+  - Press `=` on files panel to toggle numstat display
+  - Shows added/removed line counts per file from `git diff --numstat`
+  - `git-diff-numstat` data layer function
+- **Bulk branch operations** — Multi-select branches for batch delete
+  - `Space` on branches panel toggles branch selection (shown with `+` marker)
+  - `D` deletes all selected branches at once with confirmation dialog
+  - Toast shows count of selected branches
+- **Commit message templates** — Configurable prefixes per branch pattern
+  - `~/.config/gilt/commit-templates.conf` with `pattern=prefix` format
+  - Pattern matched against branch name (substring match)
+  - Prefix pre-filled in commit dialog when on matching branch
+  - `load-commit-templates` and `get-commit-template` data layer functions
+  - Example config at `commit-templates.example.conf`
+- **Not-in-repo behavior** — Init/clone/browse recent from startup
+  - When started outside a git repo, offers interactive menu:
+    - `[1]` Initialize a new repository here
+    - `[2]` Clone a repository (prompts for URL)
+    - `[3]` Browse recent repositories (numbered list)
+    - `[q]` Quit
+  - Successfully opened repos are saved to recent repos list
+- **Git notes support** — Add/edit/view git notes
+  - `N` on commits panel opens dialog to add/edit note for selected commit
+  - Notes shown in commit detail view
+  - Dialog supports Save, Delete, and Cancel
+  - `git-notes-show`, `git-notes-add`, `git-notes-remove`, `git-notes-list` data layer functions
+- **git clean integration** — Dry-run preview + confirm + clean -fd
+  - `K` on files panel shows preview of what would be removed
+  - Dialog offers `Clean -fd` (untracked) and `Clean -fdx` (include ignored)
+  - `git-clean-dry-run` and `git-clean` data layer functions
+- **Format-patch / apply-patch** — git format-patch + git am wrappers
+  - `F` on commits panel creates a patch file for the selected commit
+  - `A` on files panel opens dialog to apply a patch file
+  - Dialog supports `git apply`, `git am`, and check-only modes
+  - `git-format-patch`, `git-format-patch-single`, `git-apply-patch-file`, `git-am-patch` data layer functions
+  - Makefile fix: `make install` no longer rebuilds under sudo
+- **Submodule conflict resolution** — Conflict detection + resolution UI
+  - `M` on files panel detects submodule conflicts
+  - Dialog offers resolve with ours or theirs strategy
+  - `git-submodule-conflicts` and `git-submodule-resolve` data layer functions
+- **Divergence indicators** — Ahead/behind counts in branch list
+  - `%` on branches panel toggles divergence indicators
+  - Shows `↑N↓M` for ahead/behind counts vs upstream
+  - Color-coded: green for ahead, red for behind
+  - `git-branch-ahead-behind` data layer function
+
 ## [0.18.0] - 2026-08-16
 
 ### Added
