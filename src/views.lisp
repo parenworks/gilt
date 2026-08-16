@@ -437,6 +437,8 @@
    (syntax-highlight-p :accessor syntax-highlight-p :initform t)  ; use bat for syntax highlighting
    ;; Split diff view
    (split-diff-p :accessor split-diff-p :initform nil)  ; side-by-side diff mode
+   ;; Numstat in file list
+   (show-numstat-p :accessor show-numstat-p :initform nil)  ; show +N -M per file
    ;; Interactive rebase mode
    (rebase-mode :accessor rebase-mode :initform nil)
    (rebase-entries :accessor rebase-entries :initform nil)
@@ -717,8 +719,16 @@
          (setf (panel-items (files-panel view))
                (if (file-tree-mode view)
                    (format-file-tree filtered-entries)
-                   (loop for e in filtered-entries
-                         collect (format-status-entry e))))))))
+                   (if (show-numstat-p view)
+                       (let ((staged-stat (git-diff-numstat :staged t))
+                             (unstaged-stat (git-diff-numstat :staged nil)))
+                         (loop for e in filtered-entries
+                               collect (let ((stat (if (status-entry-staged-p e)
+                                                       (assoc (status-entry-file e) staged-stat :test #'string=)
+                                                       (assoc (status-entry-file e) unstaged-stat :test #'string=))))
+                                         (format-status-entry e (cdr stat)))))
+                       (loop for e in filtered-entries
+                             collect (format-status-entry e)))))))))
   ;; Branches panel - local, remote, tags, or submodules based on toggle
   (let ((branches (git-branches (branch-sort-mode view)))
         (remote-branches (git-remote-branches))
@@ -835,9 +845,10 @@
   ;; Main panel - show diff for selected file
   (update-main-content view))
 
-(defun format-status-entry (entry)
+(defun format-status-entry (entry &optional numstat)
   "Format a status entry for display with color.
-   Staged files are shown in green, unstaged in their status color."
+   Staged files are shown in green, unstaged in their status color.
+   NUMSTAT, if provided, is (added . removed) to show +N -M."
   (let* ((status (status-entry-status entry))
          (staged (status-entry-staged-p entry))
          (indicator (if (nerd-fonts-p)
@@ -867,7 +878,12 @@
                       (:renamed :bright-cyan)
                       (:conflict :bright-red)
                       (t :white))))
-         (text (format nil "~A ~A" indicator (status-entry-file entry))))
+         (numstat-str (if (and numstat (or (car numstat) (cdr numstat)))
+                          (format nil " +~A-~A"
+                                  (or (car numstat) 0)
+                                  (or (cdr numstat) 0))
+                          ""))
+         (text (format nil "~A ~A~A" indicator (status-entry-file entry) numstat-str)))
     (list :colored color text)))
 
 (defun format-file-tree (entries)
@@ -5264,6 +5280,13 @@
              (setf (panel-selected (main-panel view))
                    (or prev (first (last matches))))
              (update-main-content view)))))
+      ;; Numstat toggle - '=' (on files panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\=)
+            (= focused-idx 1))
+       (setf (show-numstat-p view) (not (show-numstat-p view)))
+       (show-toast view (format nil "Numstat: ~A" (if (show-numstat-p view) "ON" "OFF")))
+       (refresh-data view)
+       nil)
       ;; Split diff toggle - '\' (backslash)
       ((and (key-event-char key) (char= (key-event-char key) #\\))
        (setf (split-diff-p view) (not (split-diff-p view)))

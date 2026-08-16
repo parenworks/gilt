@@ -89,6 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Press `\` to toggle split diff mode
   - Uses `git diff --side-by-side` with 200-column width
   - `git-diff-split` and `git-diff-staged-split` data layer functions
+- **Numstat in file list** — Show +N -M per file in the files panel
+  - Press `=` on files panel to toggle numstat display
+  - Shows added/removed line counts per file from `git diff --numstat`
+  - `git-diff-numstat` data layer function
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context

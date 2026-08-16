@@ -100,7 +100,7 @@
   - Why it matters: Gittui and gitkraft support this. Many users prefer side-by-side.
   - Effort: Medium — `git diff --word-diff=porcelain` or custom rendering.
 
-- [ ] **17. Numstat in File List**
+- [x] **17. Numstat in File List**
   - What: Show lines added/deleted per file in the files panel (e.g. `+12 -3`).
   - Why it matters: Lazygit has this. Quick visual indicator of change size.
   - Effort: Small — `git diff --numstat` parsing.

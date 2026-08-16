@@ -208,6 +208,7 @@
            #:git-run
            #:git-run-lines
            #:git-status
+           #:git-diff-numstat
            #:git-init
            #:git-clone
            #:git-branch-tracking-info

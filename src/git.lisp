@@ -206,6 +206,23 @@
                        :staged-p staged-p
                        :file (subseq line 3))))))
 
+(defun git-diff-numstat (&key (staged nil))
+  "Get numstat for changed files. Returns alist of (file . (added . removed)).
+   If STAGED is true, shows staged changes only."
+  (let ((lines (if staged
+                   (git-run-lines "diff" "--cached" "--numstat")
+                   (git-run-lines "diff" "--numstat"))))
+    (loop for line in lines
+          when (and line (> (length line) 0))
+          collect (let ((parts (cl-ppcre:split "\\s+" line :limit 3)))
+                    (when (>= (length parts) 3)
+                      (let ((added (let ((a (first parts)))
+                                     (if (string= a "-") nil (parse-integer a :junk-allowed t))))
+                            (removed (let ((r (second parts)))
+                                       (if (string= r "-") nil (parse-integer r :junk-allowed t))))
+                            (file (third parts)))
+                        (cons file (cons added removed))))))))
+
 (defun git-branch-tracking-info ()
   "Get tracking info for current branch. Returns (values upstream ahead behind) or nil if no upstream."
   (let ((lines (git-run-lines "status" "--porcelain=v2" "--branch")))
