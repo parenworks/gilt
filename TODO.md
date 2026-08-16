@@ -85,7 +85,7 @@
   - What's missing: Full keybinding configuration (like tig's `.tigrc`, lazygit's config, gitui's `key_config.ron`).
   - Effort: Medium — keybinding map + config parsing + context system.
 
-- [ ] **14. Command Palette**
+- [x] **14. Command Palette**
   - What: `:` opens a searchable menu of all available actions.
   - Why it matters: Gittui and giv have this. Great for discoverability — no need to memorize keybindings.
   - Effort: Medium — enumerate all actions + fuzzy search + dispatch.

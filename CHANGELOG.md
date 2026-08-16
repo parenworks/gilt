@@ -75,6 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Format: `key=action` per line, context-specific bindings checked first then global
   - `load-keybindings` and `lookup-keybinding` data layer functions
   - Example config file at `keybindings.example.conf`
+- **Command palette** — Searchable menu of all actions
+  - Press `:` to open the command palette
+  - Type to filter commands by name
+  - `Enter` executes the selected command
+  - `j`/`k` or arrow keys to navigate, `Esc` to cancel
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context

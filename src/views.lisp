@@ -428,6 +428,11 @@
    (diff-search-mode :accessor diff-search-mode :initform nil)
    (diff-search-query :accessor diff-search-query :initform nil)
    (diff-search-matches :accessor diff-search-matches :initform nil)  ; list of match line indices
+   ;; Command palette
+   (palette-mode :accessor palette-mode :initform nil)
+   (palette-query :accessor palette-query :initform "")
+   (palette-commands :accessor palette-commands :initform nil)  ; list of (name . action-keyword)
+   (palette-filtered :accessor palette-filtered :initform nil)  ; filtered commands
    ;; Interactive rebase mode
    (rebase-mode :accessor rebase-mode :initform nil)
    (rebase-entries :accessor rebase-entries :initform nil)
@@ -1053,6 +1058,41 @@
                                (:yellow ,short-hash)
                                (:white ,(format nil " ~A" msg))))))))))
 
+(defun get-all-commands ()
+  "Return list of all available commands as (name . key) pairs.
+   Used by the command palette."
+  (list
+   '("Stage file" . #\s)
+   '("Unstage file" . #\u)
+   '("Stage all" . #\a)
+   '("Discard file changes" . #\D)
+   '("Commit" . #\c)
+   '("Commit (no hook)" . #\C)
+   '("Amend commit" . #\A)
+   '("Push" . #\P)
+   '("Pull" . #\p)
+   '("Fetch" . #\f)
+   '("Create branch" . #\b)
+   '("Delete branch" . #\d)
+   '("Merge branch" . #\m)
+   '("Rebase" . #\i)
+   '("Cherry-pick" . #\C)
+   '("Revert" . #\R)
+   '("Create tag" . #\t)
+   '("Stash" . #\s)
+   '("Pop stash" . #\g)
+   '("Blame file" . #\b)
+   '("Tree view" . #\T)
+   '("Graph view" . #\g)
+   '("All branches" . #\G)
+   '("Reset HEAD" . #\X)
+   '("Diff compare" . #\O)
+   '("Reflog/Grep/Worktree" . #\w)
+   '("New worktree" . #\W)
+   '("Quit" . #\q)
+   '("Refresh" . #\r)
+   '("Help" . #\?)))
+
 (defun update-main-content (view)
   "Update main panel based on focused panel and selection"
   (let* ((focused-idx (view-focused-panel view))
@@ -1397,6 +1437,7 @@
                        "   j/Down     Move down     k/Up  Move up"
                        "   Enter      Select/expand item"
                        "   / (in diff)  Search within diff, n/N to navigate matches"
+                       "   :            Command palette (searchable menu of all actions)"
                        ""
                        " FILES (panel 2)"
                        "   Space      Stage/unstage file"
@@ -3279,6 +3320,69 @@
        (panel-select-prev (main-panel view))))
     (return-from handle-key nil))
 
+  ;; Handle command palette mode
+  (when (palette-mode view)
+    (cond
+      ;; Escape exits palette
+      ((eq (key-event-code key) +key-escape+)
+       (setf (palette-mode view) nil)
+       (setf (palette-query view) "")
+       (setf (palette-filtered view) nil)
+       (update-main-content view))
+      ;; Enter executes selected command
+      ((eq (key-event-code key) +key-enter+)
+       (let* ((filtered (palette-filtered view))
+              (selected (panel-selected (main-panel view))))
+         (when (and filtered (< selected (length filtered)))
+           (let ((cmd-key (cdr (nth selected filtered))))
+             (setf (palette-mode view) nil)
+             (setf (palette-query view) "")
+             (setf (palette-filtered view) nil)
+             ;; Re-dispatch the key to trigger the command
+             (handle-key view (make-instance 'key-event :char cmd-key))))))
+      ;; Backspace removes last char from query
+      ((eq (key-event-code key) +key-backspace+)
+       (when (> (length (palette-query view)) 0)
+         (setf (palette-query view) (subseq (palette-query view) 0 (1- (length (palette-query view)))))
+         (setf (palette-filtered view)
+               (if (string= (palette-query view) "")
+                   (palette-commands view)
+                   (remove-if-not
+                    (lambda (cmd)
+                      (search (string-downcase (palette-query view))
+                              (string-downcase (car cmd))))
+                    (palette-commands view))))
+         (setf (panel-items (main-panel view))
+               (loop for (name . key) in (palette-filtered view)
+                     collect `(:multi-colored
+                               (:bright-yellow ,(string key))
+                               (:white ,(format nil "  ~A" name)))))
+         (setf (panel-selected (main-panel view)) 0)))
+      ;; Printable char adds to query and filters
+      ((and (key-event-char key) (graphic-char-p (key-event-char key)))
+       (setf (palette-query view)
+             (concatenate 'string (palette-query view) (string (key-event-char key))))
+       (setf (palette-filtered view)
+             (remove-if-not
+              (lambda (cmd)
+                (search (string-downcase (palette-query view))
+                        (string-downcase (car cmd))))
+              (palette-commands view)))
+       (setf (panel-items (main-panel view))
+             (loop for (name . key) in (palette-filtered view)
+                   collect `(:multi-colored
+                             (:bright-yellow ,(string key))
+                             (:white ,(format nil "  ~A" name)))))
+       (setf (panel-selected (main-panel view)) 0))
+      ;; Navigation
+      ((or (eq (key-event-code key) +key-down+)
+           (and (key-event-char key) (char= (key-event-char key) #\j)))
+       (panel-select-next (main-panel view)))
+      ((or (eq (key-event-code key) +key-up+)
+           (and (key-event-char key) (char= (key-event-char key) #\k)))
+       (panel-select-prev (main-panel view))))
+    (return-from handle-key nil))
+
   ;; Handle cherry-pick mode - viewing commits from another branch
   (when (cherry-pick-mode view)
     (cond
@@ -5135,6 +5239,20 @@
              (setf (panel-selected (main-panel view))
                    (or prev (first (last matches))))
              (update-main-content view)))))
+      ;; Command palette - ':' opens searchable command menu
+      ((and (key-event-char key) (char= (key-event-char key) #\:))
+       (setf (palette-mode view) t)
+       (setf (palette-query view) "")
+       (setf (palette-commands view) (get-all-commands))
+       (setf (palette-filtered view) (get-all-commands))
+       (setf (panel-title (main-panel view)) "[0] Command Palette")
+       (setf (panel-items (main-panel view))
+             (loop for (name . key) in (palette-filtered view)
+                   collect `(:multi-colored
+                             (:bright-yellow ,(string key))
+                             (:white ,(format nil "  ~A" name)))))
+       (setf (panel-selected (main-panel view)) 0)
+       nil)
       ;; Clone - 'M-c' (Alt+c) opens clone dialog
       ((and (key-event-char key) (char= (key-event-char key) #\c)
             (key-event-alt-p key))
