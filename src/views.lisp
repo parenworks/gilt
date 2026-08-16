@@ -441,6 +441,8 @@
    (show-numstat-p :accessor show-numstat-p :initform nil)  ; show +N -M per file
    ;; Bulk branch operations
    (selected-branches :accessor selected-branches :initform nil)  ; list of selected branch names
+   ;; Divergence indicators
+   (show-divergence-p :accessor show-divergence-p :initform nil)  ; show ahead/behind in branch list
    ;; Interactive rebase mode
    (rebase-mode :accessor rebase-mode :initform nil)
    (rebase-entries :accessor rebase-entries :initform nil)
@@ -804,16 +806,28 @@
                    (numbered-title 3 "Local" '("Remotes" "Tags" "Submodules"))))
          (setf (panel-items (branches-panel view))
                (loop for b in filtered-branches
-                     collect (let ((selected-p (member b (selected-branches view) :test #'string=)))
-                               (if (string= b (current-branch view))
-                                   (list :colored :bright-green
-                                         (if (nerd-fonts-p)
-                                             (format nil "~A ~A~A" (icon :current) b
-                                                     (if selected-p " +" ""))
-                                             (format nil "* ~A~A" b (if selected-p " +" ""))))
-                                   (if selected-p
-                                       (list :colored :bright-yellow (format nil "+ ~A" b))
-                                       (format nil "  ~A" b))))))))))
+                     collect (let ((selected-p (member b (selected-branches view) :test #'string=))
+                                   (div (if (show-divergence-p view)
+                                            (git-branch-ahead-behind b)
+                                            nil)))
+                               (let ((div-str (if div
+                                                  (format nil " ↑~D↓~D" (car div) (cdr div))
+                                                  "")))
+                                 (if (string= b (current-branch view))
+                                     (list :colored :bright-green
+                                           (if (nerd-fonts-p)
+                                               (format nil "~A ~A~A~A" (icon :current) b
+                                                       (if selected-p " +" "") div-str)
+                                               (format nil "* ~A~A~A" b (if selected-p " +" "") div-str)))
+                                     (if selected-p
+                                         (list :colored :bright-yellow
+                                               (format nil "+ ~A~A" b div-str))
+                                         (if div
+                                             `(:multi-colored
+                                               (:white ,(format nil "  ~A" b))
+                                               (:bright-green ,(format nil " ↑~D" (car div)))
+                                               (:bright-red ,(format nil "↓~D" (cdr div))))
+                                             (format nil "  ~A" b))))))))))))
   ;; Commits panel - show hash (yellow), author initials, circle, and message
   (let* ((commits (if (all-branches-mode view)
                       (git-log-all :count 100)
@@ -1488,6 +1502,7 @@
                        "   F (commits)  Format patch for selected commit"
                        "   A (files)    Apply patch (git apply / git am)"
                        "   M (files)    Detect and resolve submodule conflicts"
+                       "   % (branches) Toggle ahead/behind divergence indicators"
                        ""
                        " FILES (panel 2)"
                        "   Space      Stage/unstage file"
@@ -5144,6 +5159,14 @@
                    (make-dialog :title "Amend Commit"
                                 :message "Amend HEAD with staged changes?"
                                 :buttons '("Amend" "Amend with new message" "Cancel"))))))
+       nil)
+      ;; Divergence indicators toggle - '%' on branches panel
+      ((and (key-event-char key) (char= (key-event-char key) #\%)
+            (= focused-idx 2))
+       (setf (show-divergence-p view) (not (show-divergence-p view)))
+       (show-toast view (format nil "Divergence indicators: ~A"
+                                (if (show-divergence-p view) "ON" "OFF")))
+       (refresh-data view)
        nil)
       ;; Submodule conflict resolution - 'M' (capital, when on files panel)
       ((and (key-event-char key) (char= (key-event-char key) #\M)

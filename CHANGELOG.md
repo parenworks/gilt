@@ -130,6 +130,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `M` on files panel detects submodule conflicts
   - Dialog offers resolve with ours or theirs strategy
   - `git-submodule-conflicts` and `git-submodule-resolve` data layer functions
+- **Divergence indicators** — Ahead/behind counts in branch list
+  - `%` on branches panel toggles divergence indicators
+  - Shows `↑N↓M` for ahead/behind counts vs upstream
+  - Color-coded: green for ahead, red for behind
+  - `git-branch-ahead-behind` data layer function
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context

@@ -1796,6 +1796,20 @@
           (cons (parse-integer (second parts) :junk-allowed t)
                 (parse-integer (first parts) :junk-allowed t)))))))
 
+(defun git-branch-ahead-behind (branch)
+  "Get ahead/behind counts for BRANCH vs its upstream.
+   Returns (ahead . behind) or nil if no upstream."
+  (let ((upstream-ref (format nil "~A@{upstream}" branch)))
+    (handler-case
+        (let ((output (git-run "rev-list" "--left-right" "--count"
+                               (format nil "~A...~A" upstream-ref branch))))
+          (when (and output (> (length output) 0))
+            (let ((parts (cl-ppcre:split "\\s+" (string-trim '(#\Newline #\Space #\Tab) output))))
+              (when (= (length parts) 2)
+                (cons (parse-integer (second parts) :junk-allowed t)
+                      (parse-integer (first parts) :junk-allowed t))))))
+      (error () nil))))
+
 ;;; Git Config
 
 (defclass config-entry ()

@@ -410,6 +410,7 @@
            #:git-submodule-conflicts
            #:git-submodule-resolve
            #:git-ahead-behind
+           #:git-branch-ahead-behind
            #:git-config-list
            #:git-config-get
            #:git-config-set

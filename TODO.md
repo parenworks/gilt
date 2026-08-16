@@ -140,7 +140,7 @@
   - Why it matters: Lazygit has specialized submodule conflict handling.
   - Effort: Medium — submodule conflict detection + resolution UI.
 
-- [ ] **25. Divergence Indicators**
+- [x] **25. Divergence Indicators**
   - What: Show ahead/behind counts next to branch names in the branches panel.
   - Why it matters: Lazygit shows arrows with numbers. Gilt has the data (`git-ahead-behind`) but doesn't display it in the branch list.
   - Effort: Small — format branch list items with ahead/behind.
