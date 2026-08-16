@@ -2449,6 +2449,73 @@ Returns alist of (char . command-string)."
                                                (subseq trimmed (1+ pos)))))))
         nil)))
 
+;;; Configurable keybindings
+
+(defun keybindings-file ()
+  "Path to the keybindings config file."
+  (merge-pathnames "keybindings.conf" (gilt-config-dir)))
+
+(defun load-keybindings ()
+  "Load keybindings from config file.
+Format: [context] key=action per line, or key=action for global.
+Contexts: global, files, branches, commits, tags, stashes.
+Returns nested alist: ((context . ((key . action) ...)) ...)."
+  (let ((file (keybindings-file))
+        (result nil)
+        (current-context :global))
+    (when (probe-file file)
+      (with-open-file (s file :direction :input)
+        (loop for line = (read-line s nil nil)
+              while line
+              for trimmed = (string-trim '(#\Space #\Tab) line) do
+                (cond
+                  ;; Skip empty/comment lines
+                  ((or (string= trimmed "")
+                       (char= (char trimmed 0) #\#)) nil)
+                  ;; Context header: [context]
+                  ((and (> (length trimmed) 2)
+                        (char= (char trimmed 0) #\[)
+                        (char= (char trimmed (1- (length trimmed))) #\]))
+                   (setf current-context
+                         (intern (string-upcase
+                                  (string-trim '(#\[ #\])
+                                               trimmed))
+                                 :keyword)))
+                  ;; Key=action line
+                  ((position #\= trimmed)
+                   (let* ((pos (position #\= trimmed))
+                          (key-str (string-trim '(#\Space #\Tab)
+                                                (subseq trimmed 0 pos)))
+                          (action-str (string-trim '(#\Space #\Tab)
+                                                   (subseq trimmed (1+ pos))))
+                          (key-char (if (> (length key-str) 0)
+                                        (char key-str 0)
+                                        nil)))
+                     (when key-char
+                       (let* ((ctx-entry (assoc current-context result))
+                              (ctx-bindings (if ctx-entry (cdr ctx-entry) nil)))
+                         (setf ctx-bindings
+                               (acons key-char action-str
+                                      (remove key-char ctx-bindings :key #'car)))
+                         (setf result
+                               (if ctx-entry
+                                   (acons current-context ctx-bindings
+                                          (remove current-context result :key #'car))
+                                   (acons current-context ctx-bindings result)))))))))))
+    result))
+
+(defun lookup-keybinding (context key-char)
+  "Look up a keybinding for a given context and key character.
+   Checks context-specific bindings first, then global.
+   Returns the action string or nil."
+  (let ((bindings (load-keybindings)))
+    (or (let ((ctx-entry (assoc context bindings)))
+          (when ctx-entry
+            (cdr (assoc key-char (cdr ctx-entry)))))
+        (let ((global-entry (assoc :global bindings)))
+          (when global-entry
+            (cdr (assoc key-char (cdr global-entry))))))))
+
 ;;; Custom patch building
 
 (defun git-diff-lines (file)

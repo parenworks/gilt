@@ -69,6 +69,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Alt+i` opens Init dialog, initializes git repo in current directory
   - After cloning, gilt switches to the cloned repository
   - `git-clone` data layer function
+- **Configurable keybindings** — Keybinding map with config parsing and context system
+  - `~/.config/gilt/keybindings.conf` file with `[context]` sections
+  - Contexts: global, files, branches, commits, tags, stashes
+  - Format: `key=action` per line, context-specific bindings checked first then global
+  - `load-keybindings` and `lookup-keybinding` data layer functions
+  - Example config file at `keybindings.example.conf`
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context

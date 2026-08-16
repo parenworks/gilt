@@ -80,7 +80,7 @@
 
 ### Tier 3: Polish & Power-User Features
 
-- [ ] **13. Configurable Keybindings**
+- [x] **13. Configurable Keybindings**
   - What gilt has: Custom *commands* via `commands.conf`, but no way to override built-in keybindings.
   - What's missing: Full keybinding configuration (like tig's `.tigrc`, lazygit's config, gitui's `key_config.ron`).
   - Effort: Medium — keybinding map + config parsing + context system.

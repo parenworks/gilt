@@ -359,6 +359,9 @@
            #:git-flow-hotfix-finish
            #:custom-commands-file
            #:load-custom-commands
+           #:keybindings-file
+           #:load-keybindings
+           #:lookup-keybinding
            #:git-diff-lines
            #:git-apply-patch
            #:parse-commit-hunks
