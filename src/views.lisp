@@ -433,6 +433,8 @@
    (palette-query :accessor palette-query :initform "")
    (palette-commands :accessor palette-commands :initform nil)  ; list of (name . action-keyword)
    (palette-filtered :accessor palette-filtered :initform nil)  ; filtered commands
+   ;; Syntax highlighting
+   (syntax-highlight-p :accessor syntax-highlight-p :initform t)  ; use bat for syntax highlighting
    ;; Interactive rebase mode
    (rebase-mode :accessor rebase-mode :initform nil)
    (rebase-entries :accessor rebase-entries :initform nil)
@@ -1168,15 +1170,20 @@
             (if (and entries (>= adjusted-idx 0) (< adjusted-idx (length entries)))
                 (let* ((entry (nth adjusted-idx entries)))
                   (if (eql (tree-entry-type entry) :blob)
-                      (let ((content (git-show-file (tree-ref view) (tree-entry-path entry))))
+                      (let* ((raw-content (git-show-file (tree-ref view) (tree-entry-path entry)))
+                             (content (if (and (syntax-highlight-p view) (bat-available-p))
+                                          (bat-highlight raw-content)
+                                          raw-content)))
                         (setf (panel-title (main-panel view))
                               (format nil "[0] ~A" (tree-entry-path entry)))
                         (setf (panel-items (main-panel view))
                               (let ((lines (cl-ppcre:split "\\n" content)))
                                 (loop for l in lines for i from 1 to 500
-                                      collect `(:multi-colored
-                                                (:bright-black ,(format nil "~5D " i))
-                                                (:white ,(or l "")))))))
+                                      collect (if (and (syntax-highlight-p view) (bat-available-p))
+                                                  l  ; bat output already has ANSI codes
+                                                  `(:multi-colored
+                                                    (:bright-black ,(format nil "~5D " i))
+                                                    (:white ,(or l ""))))))))
                       (progn
                         (setf (panel-title (main-panel view)) "[0] Tree")
                         (setf (panel-items (main-panel view)) nil))))
@@ -3449,6 +3456,12 @@
       ((or (eq (key-event-code key) +key-up+)
            (and (key-event-char key) (char= (key-event-char key) #\k)))
        (panel-select-prev (files-panel view))
+       (update-main-content view))
+      ;; H toggles syntax highlighting
+      ((and (key-event-char key) (char= (key-event-char key) #\H))
+       (setf (syntax-highlight-p view) (not (syntax-highlight-p view)))
+       (show-toast view (format nil "Syntax highlighting: ~A"
+                                (if (syntax-highlight-p view) "ON" "OFF")))
        (update-main-content view)))
     (return-from handle-key nil))
 

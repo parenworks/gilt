@@ -1363,6 +1363,29 @@
    Returns the raw file content as a string."
   (git-run "show" (format nil "~A:~A" ref path)))
 
+(defun bat-available-p ()
+  "Check if bat or batcat is available on the system."
+  (or (probe-file "/usr/bin/bat")
+      (probe-file "/usr/bin/batcat")
+      (ignore-errors (uiop:run-program '("which" "bat") :output nil :error nil))))
+
+(defun bat-highlight (content &optional (language nil))
+  "Pipe content through bat for syntax highlighting.
+   Returns ANSI-highlighted string. Falls back to raw content if bat unavailable."
+  (let ((bat-bin (cond ((probe-file "/usr/bin/bat") "/usr/bin/bat")
+                       ((probe-file "/usr/bin/batcat") "/usr/bin/batcat")
+                       (t nil))))
+    (if bat-bin
+        (let ((args (if language
+                        (list bat-bin "--color=always" "--style=plain"
+                              (format nil "--language=~A" language))
+                        (list bat-bin "--color=always" "--style=plain"))))
+          (with-output-to-string (s)
+            (uiop:run-program args
+                              :input (make-string-input-stream content)
+                              :output s :error nil)))
+        content)))
+
 ;;; Tree/Blob browsing
 
 (defclass tree-entry ()

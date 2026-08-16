@@ -90,7 +90,7 @@
   - Why it matters: Gittui and giv have this. Great for discoverability — no need to memorize keybindings.
   - Effort: Medium — enumerate all actions + fuzzy search + dispatch.
 
-- [ ] **15. Syntax Highlighting in Diffs**
+- [x] **15. Syntax Highlighting in Diffs**
   - What: Color-code diff output based on file language syntax.
   - Why it matters: Gitui has this via syntect. Makes diffs much more readable.
   - Effort: Hard in Common Lisp — would need a syntax highlighting library or external tool integration (bat, etc.).

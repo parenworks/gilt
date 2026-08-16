@@ -80,6 +80,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Type to filter commands by name
   - `Enter` executes the selected command
   - `j`/`k` or arrow keys to navigate, `Esc` to cancel
+- **Syntax highlighting in diffs** — Color-code file content by language using bat
+  - Blob/tree view uses `bat` (or `batcat`) for syntax highlighting
+  - `H` in tree mode toggles syntax highlighting on/off
+  - Falls back to plain text if bat is not installed
+  - `bat-available-p` and `bat-highlight` data layer functions
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context

@@ -309,6 +309,8 @@
            #:make-grep-result
            #:git-grep
            #:git-show-file
+           #:bat-available-p
+           #:bat-highlight
            #:tree-entry
            #:tree-entry-mode
            #:tree-entry-type
