@@ -214,6 +214,7 @@
            #:git-diff-staged
            #:git-log
            #:git-log-graph
+           #:git-log-all
            #:git-log-search
            #:git-log-branch-only
            #:git-branches

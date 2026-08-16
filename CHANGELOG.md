@@ -51,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Focus the main panel (Tab), then press `/` to search within the diff
   - `n` jumps to next match, `N` jumps to previous match
   - Toast shows match count
+- **Commit graph improvements** — Better graph layout and all-branches commit list
+  - `--topo-order` flag for cleaner graph layout (no intermixed branch lines)
+  - `G` (capital) toggles all-branches mode for the commits panel
+  - `git-log-all` data layer function for all-branch commits in topo order
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context

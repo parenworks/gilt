@@ -421,14 +421,32 @@
                      :message (fifth parts)))))
 
 (defun git-log-graph (&key (count 50) all)
-  "Get commit graph as list of strings. If ALL is true, show all branches."
+  "Get commit graph as list of strings. If ALL is true, show all branches.
+   Uses --topo-order for cleaner graph layout (no intermixed branch lines)."
   (if all
       (git-run-lines "log" (format nil "-~D" count)
                      "--graph" "--oneline" "--decorate"
-                     "--color=always" "--all")
+                     "--color=always" "--all" "--topo-order")
       (git-run-lines "log" (format nil "-~D" count)
                      "--graph" "--oneline" "--decorate"
-                     "--color=always")))
+                     "--color=always" "--topo-order")))
+
+(defun git-log-all (&key (count 50))
+  "Get commits from all branches in topo order.
+   Returns list of log-entry objects."
+  (let ((lines (git-run-lines "log"
+                              (format nil "-~D" count)
+                              "--all" "--topo-order"
+                              "--pretty=format:%H|%h|%an|%ar|%s")))
+    (loop for line in lines
+          for parts = (cl-ppcre:split "\\|" line :limit 5)
+          when (= (length parts) 5)
+            collect (make-log-entry
+                     :hash (first parts)
+                     :short-hash (second parts)
+                     :author (third parts)
+                     :date (fourth parts)
+                     :message (fifth parts)))))
 
 (defun git-log-branch-only (branch &key (count 50))
   "Get commits that are in BRANCH but not in current branch (for cherry-picking)"

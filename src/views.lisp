@@ -455,6 +455,7 @@
    (portrait-threshold :accessor portrait-threshold :initform 100)  ; auto-switch below this width
    ;; Graph mode for commits
    (graph-mode :accessor graph-mode :initform nil)
+   (all-branches-mode :accessor all-branches-mode :initform nil)
    ;; Line-level staging mode
    (line-select-mode :accessor line-select-mode :initform nil)
    (line-select-hunk :accessor line-select-hunk :initform nil)
@@ -789,7 +790,9 @@
                                            (format nil "* ~A" b)))
                                  (format nil "  ~A" b))))))))
   ;; Commits panel - show hash (yellow), author initials, circle, and message
-  (let* ((commits (git-log :count 50))
+  (let* ((commits (if (all-branches-mode view)
+                      (git-log-all :count 100)
+                      (git-log :count 50)))
          (filtered-commits (if (and (filter-query view) (eql (filter-panel view) 3))
                                (remove-if-not
                                 (lambda (c) (fuzzy-match-p (filter-query view)
@@ -1221,7 +1224,7 @@
         '(("j/k" . "navigate") ("Enter" . "checkout") ("n" . "new") ("N" . "rename")
           ("w" . "local/remote") ("M" . "merge") ("R" . "rebase") ("F" . "ff") ("d" . "diff") ("s" . "sort") ("D" . "delete") ("r" . "refresh") ("q" . "quit")))))
     (3 ; Commits panel
-     '(("j/k" . "navigate") ("i" . "rebase") ("g" . "graph") ("X" . "reset") ("A" . "amend") ("C" . "cherry-pick") ("Space" . "copy") ("V" . "paste") ("R" . "revert") ("S" . "squash") ("F" . "fixup") ("M" . "move to branch") ("t" . "tag") ("T" . "tree") ("b" . "bisect") ("o" . "browser") ("r" . "refresh") ("q" . "quit")))
+     '(("j/k" . "navigate") ("i" . "rebase") ("g" . "graph") ("G" . "all branches") ("X" . "reset") ("A" . "amend") ("C" . "cherry-pick") ("Space" . "copy") ("V" . "paste") ("R" . "revert") ("S" . "squash") ("F" . "fixup") ("M" . "move to branch") ("t" . "tag") ("T" . "tree") ("b" . "bisect") ("o" . "browser") ("r" . "refresh") ("q" . "quit")))
     (4 ; Stash panel
      '(("j/k" . "navigate") ("s" . "stash") ("g" . "pop") ("D" . "drop") ("r" . "refresh") ("q" . "quit")))
     (t ; Default
@@ -1418,6 +1421,8 @@
                        ""
                        " COMMITS (panel 4)"
                        "   /          Search/filter commits"
+                       "   g          Toggle graph view (all branches, topo-order)"
+                       "   G          Toggle all-branches mode for commit list"
                        "   Enter      Browse commit files"
                        "   M          Move commits to new branch"
                        "   t          Create tag on commit"
@@ -4967,6 +4972,14 @@
        (setf (graph-mode view) (not (graph-mode view)))
        (log-command view (format nil "Graph mode: ~A" (if (graph-mode view) "on" "off")))
        (update-main-content view)
+       nil)
+      ;; All-branches toggle - 'G' (capital, when on commits panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\G)
+            (= focused-idx 3))
+       (setf (all-branches-mode view) (not (all-branches-mode view)))
+       (log-command view (format nil "All branches: ~A" (if (all-branches-mode view) "on" "off")))
+       (show-toast view (format nil "All branches: ~A" (if (all-branches-mode view) "on" "off")))
+       (refresh-data view)
        nil)
       ;; Bisect good - 'g' (when on commits panel in bisect mode)
       ((and (key-event-char key) (char= (key-event-char key) #\g)

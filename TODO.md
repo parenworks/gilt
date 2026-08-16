@@ -50,7 +50,7 @@
   - Why it matters: Git-fuzzy's killer feature. Find specific changes across many diffs.
   - Effort: Medium — search through diff text + highlight matches.
 
-- [ ] **9. Commit Graph Improvements**
+- [x] **9. Commit Graph Improvements**
   - What gilt has: Basic graph toggle (`g`).
   - What's missing:
     - Color-coded branch lanes — visual graph with colored lines showing branch relationships (lazygit, gitk, giv)
