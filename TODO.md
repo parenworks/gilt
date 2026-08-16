@@ -120,7 +120,7 @@
   - Why it matters: Froggit, lazygit, and gittui handle this gracefully. Gilt just errors.
   - Effort: Small-Medium — startup dialog + repo creation.
 
-- [ ] **21. Git Notes Support**
+- [x] **21. Git Notes Support**
   - What: Add, edit, and view `git notes` (annotations on commits).
   - Why it matters: Magit supports this. Useful for adding context to commits without changing them.
   - Effort: Small — `git notes add/show` wrappers.

@@ -1252,14 +1252,18 @@
              (when (and commits (< selected (length commits)))
                (let* ((commit (nth selected commits))
                       (full-message (git-commit-message (log-entry-hash commit)))
-                      (message-lines (cl-ppcre:split "\\n" (string-trim '(#\Newline #\Space) full-message))))
+                      (message-lines (cl-ppcre:split "\\n" (string-trim '(#\Newline #\Space) full-message)))
+                      (note (git-notes-show (log-entry-hash commit)))
+                      (note-lines (when (and note (> (length note) 0))
+                                    (cons "" (cons "Note:" (cl-ppcre:split "\\n" note))))))
                  (setf (panel-title (main-panel view)) "[0] Commit")
                  (setf (panel-items (main-panel view))
                        (append (list (format nil "Hash: ~A" (log-entry-hash commit))
                                      (format nil "Author: ~A" (log-entry-author commit))
                                      (format nil "Date: ~A" (log-entry-date commit))
                                      "")
-                               message-lines)))))))
+                               message-lines
+                               note-lines)))))))
       ;; Branches panel focused
       ((= focused-idx 2)
        (setf (panel-title (main-panel view)) "[0] Branch Info")
@@ -1479,6 +1483,7 @@
                        "   / (in diff)  Search within diff, n/N to navigate matches"
                        "   :            Command palette (searchable menu of all actions)"
                        "   \\            Toggle split diff (side-by-side) view"
+                       "   N (commits)  Add/edit git note for selected commit"
                        ""
                        " FILES (panel 2)"
                        "   Space      Stage/unstage file"
@@ -2016,6 +2021,23 @@
                   (log-command view (format nil "git revert ~A" hash))
                   (git-revert hash)
                   (refresh-data view))))
+             ;; Git Note dialog
+             ((string= (dialog-title dlg) "Git Note")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-idx (dialog-selected-button dlg))
+                     (selected-button (nth selected-idx buttons))
+                     (hash (dialog-data dlg))
+                     (lines (dialog-input-lines dlg))
+                     (message (format nil "~{~A~^~%~}" lines)))
+                (cond
+                  ((string= selected-button "Save")
+                   (git-notes-add hash message)
+                   (show-toast view "Note saved")
+                   (refresh-data view))
+                  ((string= selected-button "Delete")
+                   (git-notes-remove hash)
+                   (show-toast view "Note deleted")
+                   (refresh-data view)))))
              ;; Amend Commit dialog
              ((string= (dialog-title dlg) "Amend Commit")
               (let* ((buttons (dialog-buttons dlg))
@@ -5071,6 +5093,23 @@
                    (make-dialog :title "Amend Commit"
                                 :message "Amend HEAD with staged changes?"
                                 :buttons '("Amend" "Amend with new message" "Cancel"))))))
+       nil)
+      ;; Git notes - 'N' (capital, when on commits panel) to add/edit note
+      ((and (key-event-char key) (char= (key-event-char key) #\N)
+            (= focused-idx 3))
+       (let* ((commits (commit-list view))
+              (selected (panel-selected panel)))
+         (when (and commits (< selected (length commits)))
+           (let* ((commit (nth selected commits))
+                  (hash (log-entry-hash commit))
+                  (existing (git-notes-show hash)))
+             (setf (active-dialog view)
+                   (make-dialog :title "Git Note"
+                                :message (format nil "Note for ~A" (log-entry-short-hash commit))
+                                :input-mode t
+                                :input-buffer (when (and existing (> (length existing) 0)) existing)
+                                :data hash
+                                :buttons '("Save" "Delete" "Cancel"))))))
        nil)
       ;; Reset to commit - 'X' (capital, when on commits panel)
       ((and (key-event-char key) (char= (key-event-char key) #\X)

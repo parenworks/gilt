@@ -2340,6 +2340,32 @@
       (git-run "stash" "branch" branch-name (format nil "stash@{~D}" index))
       (git-run "stash" "branch" branch-name)))
 
+;;; Git notes support
+
+(defun git-notes-show (object)
+  "Show the note for a given object (commit hash, ref, etc.)."
+  (git-run "notes" "show" object))
+
+(defun git-notes-add (object message)
+  "Add a note to OBJECT with MESSAGE. Overwrites existing note."
+  (git-run "notes" "add" "-f" "-m" message object))
+
+(defun git-notes-remove (object)
+  "Remove the note for OBJECT."
+  (git-run "notes" "remove" object))
+
+(defun git-notes-list (&optional object)
+  "List notes. If OBJECT is given, lists notes for that object.
+   Returns list of (note-ref . object-hash) pairs."
+  (let ((lines (if object
+                   (git-run-lines "notes" "list" object)
+                   (git-run-lines "notes" "list"))))
+    (loop for line in lines
+          when (and line (> (length line) 0))
+          collect (let ((parts (cl-ppcre:split "\\s+" line :limit 2)))
+                    (when (>= (length parts) 2)
+                      (cons (first parts) (second parts)))))))
+
 ;;; Clipboard support
 
 (defun copy-to-clipboard (text)

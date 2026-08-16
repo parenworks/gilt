@@ -492,6 +492,10 @@
            #:git-stash-clear
            #:git-stash-show
            #:git-stash-branch
+           #:git-notes-show
+           #:git-notes-add
+           #:git-notes-remove
+           #:git-notes-list
            ;; Interactive rebase
            #:rebase-todo-entry
            #:make-rebase-todo-entry
