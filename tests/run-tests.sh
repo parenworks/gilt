@@ -392,6 +392,884 @@ else
     fail "Not enough files for testing"
 fi
 
+# ─── 8. New Feature Tests (Phase 1 & 2) ─────────────────────────
+section "8. New Features (Phase 1 & 2)"
+
+GILT_SRC="$(cd "$SCRIPT_DIR/.." && pwd)"
+SBCL_INIT="(progn (require :asdf) (load \"$HOME/quicklisp/setup.lisp\") (push #p\"$GILT_SRC/\" asdf:*central-registry*))"
+
+# Test fuzzy matching via Lisp evaluation
+FUZZY_RESULT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval '(format t "~A ~A ~A ~A"
+            (gilt.views::fuzzy-match-p "abc" "aXbYcZ")
+            (gilt.views::fuzzy-match-p "abc" "AbBcC")
+            (gilt.views::fuzzy-match-p "xyz" "abc")
+            (gilt.views::fuzzy-match-p "" "anything"))' \
+  2>/dev/null | tail -1)
+
+if [ "$FUZZY_RESULT" = "T T NIL T" ]; then
+    pass "Fuzzy matching works correctly (4/4 cases)"
+else
+    fail "Fuzzy matching returned: '$FUZZY_RESULT' (expected 'T T NIL T')"
+fi
+
+# Test git-commit-files returns files for HEAD commit
+cd "$REPO_DIR"
+COMMIT_FILES=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((files (gilt.git:git-commit-files \"HEAD\")))
+              (format t \"~D\" (length files))))" \
+  2>/dev/null | tail -1)
+
+if [ -n "$COMMIT_FILES" ] && [ "$COMMIT_FILES" -gt 0 ] 2>/dev/null; then
+    pass "git-commit-files returns files for HEAD ($COMMIT_FILES files)"
+else
+    fail "git-commit-files returned: '$COMMIT_FILES'"
+fi
+
+# Test git-diff-refs between branches
+DIFF_REFS=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((diff (gilt.git:git-diff-refs \"master\" \"feature/login\")))
+              (format t \"~A\" (if (and diff (> (length diff) 0)) \"OK\" \"EMPTY\"))))" \
+  2>/dev/null | tail -1)
+
+if [ "$DIFF_REFS" = "OK" ]; then
+    pass "git-diff-refs produces diff between branches"
+else
+    fail "git-diff-refs returned: '$DIFF_REFS'"
+fi
+
+# Test git-diff-refs-stat
+DIFF_STAT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((stat (gilt.git:git-diff-refs-stat \"master\" \"feature/login\")))
+              (format t \"~A\" (if (and stat (> (length stat) 0)) \"OK\" \"EMPTY\"))))" \
+  2>/dev/null | tail -1)
+
+if [ "$DIFF_STAT" = "OK" ]; then
+    pass "git-diff-refs-stat produces stat summary"
+else
+    fail "git-diff-refs-stat returned: '$DIFF_STAT'"
+fi
+
+# Test git-move-commits-to-new-branch in temp branch
+cd "$REPO_DIR"
+git checkout -b test-move-source 2>/dev/null
+echo "move test" > move-test.txt
+git add move-test.txt 2>/dev/null
+git commit -m "commit to move" 2>/dev/null
+
+MOVE_RESULT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((old (gilt.git:git-move-commits-to-new-branch \"test-move-dest\" 1)))
+              (format t \"~A\" old)))" \
+  2>/dev/null | tail -1)
+
+CURRENT_BRANCH=$(git branch --show-current)
+DEST_EXISTS=$(git branch | grep -c "test-move-dest")
+
+if [ "$CURRENT_BRANCH" = "test-move-dest" ] && [ "$DEST_EXISTS" -ge 1 ]; then
+    pass "Move commits to new branch works (moved 1 commit to test-move-dest)"
+else
+    fail "Move commits failed: current=$CURRENT_BRANCH, dest_exists=$DEST_EXISTS, result=$MOVE_RESULT"
+fi
+
+# Cleanup move test
+git checkout master 2>/dev/null
+git branch -D test-move-source 2>/dev/null
+git branch -D test-move-dest 2>/dev/null
+
+# Test custom pager detection (should return nil when not configured)
+PAGER_RESULT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((pager (gilt.views::detect-custom-pager)))
+              (format t \"~A\" (if pager pager \"NONE\"))))" \
+  2>/dev/null | tail -1)
+
+if [ -n "$PAGER_RESULT" ]; then
+    if [ "$PAGER_RESULT" = "NONE" ]; then
+        pass "Custom pager detection works (no pager configured)"
+    else
+        pass "Custom pager detection works (found: $PAGER_RESULT)"
+    fi
+else
+    fail "Custom pager detection failed"
+fi
+
+# Test toast notification functions exist and work
+TOAST_RESULT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (let ((view (make-instance (quote gilt.views::main-view))))
+              (gilt.views::show-toast view \"test\" 0.1)
+              (format t \"~A ~A\"
+                (if (gilt.views::toast-message view) \"MSG-OK\" \"MSG-FAIL\")
+                (if (> (gilt.views::toast-expiry view) 0) \"EXP-OK\" \"EXP-FAIL\"))))" \
+  2>/dev/null | tail -1)
+
+if [ "$TOAST_RESULT" = "MSG-OK EXP-OK" ]; then
+    pass "Toast notification system works"
+else
+    fail "Toast notification returned: '$TOAST_RESULT'"
+fi
+
+# Test format-diff-lines with built-in colorizer
+DIFF_FMT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.views::*custom-pager* nil)
+            (let ((lines (gilt.views::format-diff-lines
+                          (format nil \"+added~%-removed~%@@ hunk~%plain\"))))
+              (format t \"~D\" (length lines))))" \
+  2>/dev/null | tail -1)
+
+if [ "$DIFF_FMT" = "4" ]; then
+    pass "format-diff-lines produces colored output (4 lines)"
+else
+    fail "format-diff-lines returned: '$DIFF_FMT'"
+fi
+
+# Test nerd font icon system
+NERD_RESULT=$(GILT_NERD_FONTS=1 sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.views::*nerd-fonts* :unset)
+            (let ((enabled (gilt.views::nerd-fonts-p))
+                  (ico (gilt.views::icon :branches)))
+              (format t \"~A ~A\"
+                (if enabled \"ON\" \"OFF\")
+                (if (> (length ico) 0) \"HAS-ICON\" \"NO-ICON\"))))" \
+  2>/dev/null | tail -1)
+
+if [ "$NERD_RESULT" = "ON HAS-ICON" ]; then
+    pass "Nerd font icons work when enabled (GILT_NERD_FONTS=1)"
+else
+    fail "Nerd font icons returned: '$NERD_RESULT' (expected 'ON HAS-ICON')"
+fi
+
+# Test nerd font icons disabled by default (override git config too)
+NERD_OFF=$(GILT_NERD_FONTS="" sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.views::*nerd-fonts* nil)
+            (let ((ico (gilt.views::icon :branches)))
+              (format t \"~A\" (if (= (length ico) 0) \"EMPTY\" \"NOT-EMPTY\"))))" \
+  2>/dev/null | tail -1)
+
+if [ "$NERD_OFF" = "EMPTY" ]; then
+    pass "Nerd font icons disabled when not configured"
+else
+    fail "Nerd font icons should be empty when disabled: '$NERD_OFF'"
+fi
+
+# ─── Custom Patch Builder Tests ──────────────────────────────────
+section "Custom Patch Builder"
+
+# Test parse-commit-hunks returns hunks for a known commit
+cd "$REPO_DIR"
+# Make a multi-hunk commit for testing
+echo "line1" > patchtest.txt
+echo "line2" >> patchtest.txt
+echo "line3" >> patchtest.txt
+git add patchtest.txt
+git commit -m "patch test base" --quiet
+
+echo "changed1" > patchtest.txt
+echo "line2" >> patchtest.txt
+echo "changed3" >> patchtest.txt
+git add patchtest.txt
+git commit -m "patch test changes" --quiet
+
+PATCH_HASH=$(git rev-parse HEAD)
+
+PATCH_PARSE=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((hunks (gilt.git:parse-commit-hunks \"$PATCH_HASH\" \"patchtest.txt\")))
+              (format t \"~D\" (length hunks))))" \
+  2>/dev/null | tail -1)
+
+if [ -n "$PATCH_PARSE" ] && [ "$PATCH_PARSE" -gt 0 ] 2>/dev/null; then
+    pass "parse-commit-hunks returns $PATCH_PARSE hunk(s) from commit"
+else
+    fail "parse-commit-hunks returned: '$PATCH_PARSE' (expected >0 hunks)"
+fi
+
+# Test build-accumulated-patch produces valid output
+PATCH_BUILD=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let* ((hunks (gilt.git:parse-commit-hunks \"$PATCH_HASH\" \"patchtest.txt\"))
+                   (patch (gilt.git:build-full-patch \"patchtest.txt\" hunks)))
+              (format t \"~A\" (if (and patch (> (length patch) 0)
+                                       (search \"---\" patch)
+                                       (search \"+++ \" patch))
+                                  \"VALID\" \"INVALID\"))))" \
+  2>/dev/null | tail -1)
+
+if [ "$PATCH_BUILD" = "VALID" ]; then
+    pass "build-full-patch produces valid patch with file headers"
+else
+    fail "build-full-patch returned: '$PATCH_BUILD' (expected VALID)"
+fi
+
+# Test patch builder state slots exist on main-view
+PATCH_SLOTS=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (let ((slots '(gilt.views::patch-builder-mode
+                           gilt.views::patch-builder-hash
+                           gilt.views::patch-builder-files
+                           gilt.views::patch-builder-selected
+                           gilt.views::patch-builder-current-file
+                           gilt.views::patch-builder-hunk-view)))
+              (format t \"~D\"
+                (count-if (lambda (s)
+                            (find-method (fdefinition s) nil
+                              (list (find-class 'gilt.views::main-view)) nil))
+                          slots))))" \
+  2>/dev/null | tail -1)
+
+if [ "$PATCH_SLOTS" = "6" ]; then
+    pass "All 6 patch builder slots exist on main-view"
+else
+    fail "Patch builder slots: '$PATCH_SLOTS' found (expected 6)"
+fi
+
+# ─── Auto-Refresh / Auto-Fetch Tests ────────────────────────────
+section "Auto-Refresh / Auto-Fetch"
+
+# Test detect-auto-fetch-config returns defaults
+AUTO_CONFIG=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (multiple-value-bind (enabled fetch-int refresh-int)
+                (gilt.views::detect-auto-fetch-config)
+              (format t \"~A ~D ~D\"
+                (if enabled \"ON\" \"OFF\")
+                fetch-int refresh-int)))" \
+  2>/dev/null | tail -1)
+
+if echo "$AUTO_CONFIG" | grep -qE "^OFF [0-9]+ [0-9]+$"; then
+    pass "detect-auto-fetch-config returns defaults ($AUTO_CONFIG)"
+else
+    fail "detect-auto-fetch-config returned: '$AUTO_CONFIG' (expected 'OFF <int> <int>')"
+fi
+
+# Test auto-fetch enabled via env var
+AUTO_ENABLED=$(GILT_AUTO_FETCH=1 GILT_FETCH_INTERVAL=30 sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (multiple-value-bind (enabled fetch-int refresh-int)
+                (gilt.views::detect-auto-fetch-config)
+              (format t \"~A ~D\"
+                (if enabled \"ON\" \"OFF\")
+                fetch-int)))" \
+  2>/dev/null | tail -1)
+
+if [ "$AUTO_ENABLED" = "ON 30" ]; then
+    pass "Auto-fetch enabled via GILT_AUTO_FETCH=1, interval=30"
+else
+    fail "Auto-fetch env config returned: '$AUTO_ENABLED' (expected 'ON 30')"
+fi
+
+# Test auto-refresh/fetch slots exist on main-view
+AUTO_SLOTS=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (let ((slots '(gilt.views::auto-refresh-interval
+                           gilt.views::auto-fetch-interval
+                           gilt.views::auto-fetch-enabled
+                           gilt.views::last-refresh-time
+                           gilt.views::last-fetch-time
+                           gilt.views::fetch-thread
+                           gilt.views::fetch-result
+                           gilt.views::fetch-in-progress)))
+              (format t \"~D\"
+                (count-if (lambda (s)
+                            (find-method (fdefinition s) nil
+                              (list (find-class 'gilt.views::main-view)) nil))
+                          slots))))" \
+  2>/dev/null | tail -1)
+
+if [ "$AUTO_SLOTS" = "8" ]; then
+    pass "All 8 auto-refresh/fetch slots exist on main-view"
+else
+    fail "Auto-refresh/fetch slots: '$AUTO_SLOTS' found (expected 8)"
+fi
+
+# ─── Phase 3 Feature Tests ──────────────────────────────────────
+section "Phase 3: Screen Mode / Portrait / Accordion / Credentials"
+
+# Test screen mode cycling
+SCREEN_MODE=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((v (make-instance 'gilt.views::main-view)))
+              (format t \"~A\" (gilt.views::screen-mode v))
+              (setf (gilt.views::screen-mode v) :half)
+              (format t \" ~A\" (gilt.views::screen-mode v))
+              (setf (gilt.views::screen-mode v) :full)
+              (format t \" ~A\" (gilt.views::screen-mode v))))" \
+  2>/dev/null | tail -1)
+
+if [ "$SCREEN_MODE" = "NORMAL HALF FULL" ]; then
+    pass "Screen mode cycles: normal -> half -> full"
+else
+    fail "Screen mode returned: '$SCREEN_MODE' (expected 'NORMAL HALF FULL')"
+fi
+
+# Test portrait mode and threshold slots
+PORTRAIT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (setf gilt.git:*current-repo* (make-instance (quote gilt.git::git-repository) :path \"$REPO_DIR/\" :name \"test\"))
+            (let ((v (make-instance 'gilt.views::main-view)))
+              (format t \"~A ~D ~A\"
+                (gilt.views::portrait-mode v)
+                (gilt.views::portrait-threshold v)
+                (gilt.views::accordion-weight v))))" \
+  2>/dev/null | tail -1)
+
+if [ "$PORTRAIT" = "NIL 100 0.6" ]; then
+    pass "Portrait mode defaults: off, threshold=100, accordion=0.6"
+else
+    fail "Portrait defaults returned: '$PORTRAIT' (expected 'NIL 100 0.6')"
+fi
+
+# Test credential-prompt-p detection
+CRED=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (let ((results
+                   (list (gilt.views::credential-prompt-p \"Username for 'https://github.com':\")
+                         (gilt.views::credential-prompt-p \"Password for 'https://user@github.com':\")
+                         (gilt.views::credential-prompt-p \"Enter passphrase for key '/home/user/.ssh/id_rsa':\")
+                         (gilt.views::credential-prompt-p \"remote: Counting objects\")
+                         (gilt.views::credential-prompt-p \"\"))))
+              (format t \"~{~A~^ ~}\" (mapcar (lambda (x) (if x \"T\" \"F\")) results))))" \
+  2>/dev/null | tail -1)
+
+if [ "$CRED" = "T T T F F" ]; then
+    pass "credential-prompt-p detects username/password/passphrase correctly"
+else
+    fail "credential-prompt-p returned: '$CRED' (expected 'T T T F F')"
+fi
+
+# Test draw-landscape-layout and draw-portrait-layout exist
+LAYOUTS=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (format t \"~A ~A\"
+              (if (fboundp 'gilt.views::draw-landscape-layout) \"Y\" \"N\")
+              (if (fboundp 'gilt.views::draw-portrait-layout) \"Y\" \"N\")))" \
+  2>/dev/null | tail -1)
+
+if [ "$LAYOUTS" = "Y Y" ]; then
+    pass "draw-landscape-layout and draw-portrait-layout both exist"
+else
+    fail "Layout functions: '$LAYOUTS' (expected 'Y Y')"
+fi
+
+# ─── Phase 4 Feature Tests ──────────────────────────────────────
+section "Phase 4: Theming / Update Checker / Rename Threshold"
+
+# Test theme loading from file
+THEME_FILE="/tmp/gilt-test-theme-$$.conf"
+cat > "$THEME_FILE" <<'EOF'
+# Test theme
+diff-add=42
+staged=28
+EOF
+
+THEME_RESULT=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (gilt.ansi:load-theme-file \"$THEME_FILE\")
+            (format t \"~D ~D\"
+              (gilt.ansi:color-code :diff-add)
+              (gilt.ansi:color-code :staged)))" \
+  2>/dev/null | tail -1)
+rm -f "$THEME_FILE"
+
+if [ "$THEME_RESULT" = "42 28" ]; then
+    pass "Theme loading overrides colors correctly (diff-add=42, staged=28)"
+else
+    fail "Theme loading returned: '$THEME_RESULT' (expected '42 28')"
+fi
+
+# Test load-user-theme function exists
+THEME_FN=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(format t \"~A\" (if (fboundp 'gilt.ansi:load-user-theme) \"Y\" \"N\"))" \
+  2>/dev/null | tail -1)
+
+if [ "$THEME_FN" = "Y" ]; then
+    pass "load-user-theme function exists"
+else
+    fail "load-user-theme: '$THEME_FN' (expected 'Y')"
+fi
+
+# Test check-for-updates function exists
+UPDATE_FN=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(format t \"~A ~A\"
+            (if (fboundp 'gilt.git:check-for-updates) \"Y\" \"N\")
+            gilt.git:*github-repo*)" \
+  2>/dev/null | tail -1)
+
+if [ "$UPDATE_FN" = "Y parenworks/gilt" ]; then
+    pass "check-for-updates exists, repo=parenworks/gilt"
+else
+    fail "Update checker returned: '$UPDATE_FN' (expected 'Y parenworks/gilt')"
+fi
+
+# Test rename threshold controls
+RENAME=$(sbcl --noinform --non-interactive \
+  --eval "$SBCL_INIT" \
+  --eval '(ql:quickload :gilt :silent t)' \
+  --eval "(progn
+            (format t \"~A\" gilt.git:*rename-threshold*)
+            (setf gilt.git:*rename-threshold* 50)
+            (format t \" ~A\" (gilt.git:rename-threshold-arg))
+            (setf gilt.git:*rename-threshold* nil)
+            (format t \" ~A\" (gilt.git:rename-threshold-arg)))" \
+  2>/dev/null | tail -1)
+
+if [ "$RENAME" = "NIL -M50% NIL" ]; then
+    pass "Rename threshold: default nil, arg=-M50%, nil when off"
+else
+    fail "Rename threshold returned: '$RENAME' (expected 'NIL -M50% NIL')"
+fi
+
+# ─── 8.5 v0.18.0 Feature Tests ───────────────────────────────────
+section "8.5 v0.18.0 Features"
+
+# Test: git-reflog
+REFLOG_OUTPUT=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-reflog :limit 10)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$REFLOG_OUTPUT" ] && [ "$REFLOG_OUTPUT" -ge 0 ] 2>/dev/null; then
+    pass "git-reflog: returned $REFLOG_OUTPUT entries"
+else
+    fail "git-reflog: invalid output" "$REFLOG_OUTPUT"
+fi
+
+# Test: git-reflog-show
+REFLOG_SHOW=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-reflog-show "HEAD@{0}")))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$REFLOG_SHOW" ] && [ "$REFLOG_SHOW" -ge 0 ] 2>/dev/null; then
+    pass "git-reflog-show: returned $REFLOG_SHOW chars"
+else
+    fail "git-reflog-show: invalid output" "$REFLOG_SHOW"
+fi
+
+# Test: git-grep
+GREP_OUTPUT=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-grep "test" :ignore-case t)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$GREP_OUTPUT" ] && [ "$GREP_OUTPUT" -ge 0 ] 2>/dev/null; then
+    pass "git-grep: found $GREP_OUTPUT matches for 'test'"
+else
+    fail "git-grep: invalid output" "$GREP_OUTPUT"
+fi
+
+# Test: git-ls-tree
+LS_TREE=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-ls-tree "HEAD")))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$LS_TREE" ] && [ "$LS_TREE" -gt 0 ] 2>/dev/null; then
+    pass "git-ls-tree: returned $LS_TREE entries"
+else
+    fail "git-ls-tree: no entries" "$LS_TREE"
+fi
+
+# Test: git-show-file
+SHOW_FILE=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-show-file "HEAD" "README.md")))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$SHOW_FILE" ] && [ "$SHOW_FILE" -gt 0 ] 2>/dev/null; then
+    pass "git-show-file: returned $SHOW_FILE chars for README.md"
+else
+    fail "git-show-file: no content" "$SHOW_FILE"
+fi
+
+# Test: git-log-line-range (line trace)
+LINE_TRACE=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-log-line-range "README.md" 1 5 :limit 5)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$LINE_TRACE" ] && [ "$LINE_TRACE" -ge 0 ] 2>/dev/null; then
+    pass "git-log-line-range: returned $LINE_TRACE trace entries"
+else
+    fail "git-log-line-range: invalid output" "$LINE_TRACE"
+fi
+
+# Test: git-blame
+BLAME=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-blame "README.md")))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$BLAME" ] && [ "$BLAME" -gt 0 ] 2>/dev/null; then
+    pass "git-blame: returned $BLAME blame lines for README.md"
+else
+    fail "git-blame: no output" "$BLAME"
+fi
+
+# Test: git-blame-at with ref
+BLAME_REF=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-blame-at "README.md" :ref "HEAD")))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$BLAME_REF" ] && [ "$BLAME_REF" -gt 0 ] 2>/dev/null; then
+    pass "git-blame-at: returned $BLAME_REF lines with ref=HEAD"
+else
+    fail "git-blame-at: no output" "$BLAME_REF"
+fi
+
+# Test: git-log-all (commit graph)
+LOG_ALL=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-log-all :count 50)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$LOG_ALL" ] && [ "$LOG_ALL" -gt 0 ] 2>/dev/null; then
+    pass "git-log-all: returned $LOG_ALL commits"
+else
+    fail "git-log-all: no commits" "$LOG_ALL"
+fi
+
+# Test: git-push-force-with-lease (just check function exists)
+PUSH_FWL=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval "(format t \"~A\" (let ((s (find-symbol \"GIT-PUSH-FORCE-WITH-LEASE\" :gilt.git))) (not (null (and s (fboundp s))))))" \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$PUSH_FWL" = "T" ]; then
+    pass "git-push-force-with-lease: function exists"
+else
+    fail "git-push-force-with-lease: function not found"
+fi
+
+# Test: git-push-force (just check function exists)
+PUSH_F=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval "(format t \"~A\" (let ((s (find-symbol \"GIT-PUSH-FORCE\" :gilt.git))) (not (null (and s (fboundp s))))))" \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$PUSH_F" = "T" ]; then
+    pass "git-push-force: function exists"
+else
+    fail "git-push-force: function not found"
+fi
+
+# Test: git-clone (just check function exists, don't actually clone)
+CLONE_FN=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval "(format t \"~A\" (let ((s (find-symbol \"GIT-CLONE\" :gilt.git))) (not (null (and s (fboundp s))))))" \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$CLONE_FN" = "T" ]; then
+    pass "git-clone: function exists"
+else
+    fail "git-clone: function not found"
+fi
+
+# Test: git-init (just check function exists)
+INIT_FN=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval "(format t \"~A\" (let ((s (find-symbol \"GIT-INIT\" :gilt.git))) (not (null (and s (fboundp s))))))" \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$INIT_FN" = "T" ]; then
+    pass "git-init: function exists"
+else
+    fail "git-init: function not found"
+fi
+
+# Test: load-keybindings (just check function exists)
+KEYBIND_FN=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval "(format t \"~A\" (let ((s (find-symbol \"LOAD-KEYBINDINGS\" :gilt.git))) (not (null (and s (fboundp s))))))" \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$KEYBIND_FN" = "T" ]; then
+    pass "load-keybindings: function exists"
+else
+    fail "load-keybindings: function not found"
+fi
+
+# Test: git-cherry-pick (just check function exists)
+CP_FN=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval "(format t \"~A\" (let ((s (find-symbol \"GIT-CHERRY-PICK\" :gilt.git))) (not (null (and s (fboundp s))))))" \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$CP_FN" = "T" ]; then
+    pass "git-cherry-pick: function exists"
+else
+    fail "git-cherry-pick: function not found"
+fi
+
+# Test: fuzzy-match-p (used by diff search and filtering)
+FUZZY=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (gilt.views::fuzzy-match-p "abc" "aXbYcZ"))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$FUZZY" = "T" ]; then
+    pass "fuzzy-match-p: correctly matches 'abc' in 'aXbYcZ'"
+else
+    fail "fuzzy-match-p: expected T, got '$FUZZY'"
+fi
+
+# ─── 9. v0.19.0 Feature Tests ────────────────────────────────────
+section "9. v0.19.0 Features"
+
+# Test: bat availability check
+BAT_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (gilt.git:bat-available-p))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$BAT_OUTPUT" != "NIL" ]; then
+    pass "bat-available-p: detected bat/batcat ($BAT_OUTPUT)"
+else
+    skip "bat-available-p" "bat not installed"
+fi
+
+# Test: bat-highlight produces output
+if [ "$BAT_OUTPUT" != "NIL" ]; then
+    HL_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+        --eval '(require :asdf)' \
+        --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+        --eval '(ql:quickload :gilt)' \
+        --eval '(format t "~A" (length (gilt.git:bat-highlight "(defun foo () 42)" "lisp")))' \
+        --eval '(quit)' 2>&1 | tail -1)
+    if [ -n "$HL_OUTPUT" ] && [ "$HL_OUTPUT" -gt 0 ] 2>/dev/null; then
+        pass "bat-highlight: produced $HL_OUTPUT chars of output"
+    else
+        fail "bat-highlight: no output" "length=$HL_OUTPUT"
+    fi
+else
+    skip "bat-highlight" "bat not installed"
+fi
+
+# Test: git-diff-numstat
+NUMSTAT_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (length (gilt.git:git-diff-numstat)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$NUMSTAT_OUTPUT" ] && [ "$NUMSTAT_OUTPUT" -ge 0 ] 2>/dev/null; then
+    pass "git-diff-numstat: returned $NUMSTAT_OUTPUT entries"
+else
+    fail "git-diff-numstat: invalid output" "$NUMSTAT_OUTPUT"
+fi
+
+# Test: git-diff-split
+SPLIT_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (length (gilt.git:git-diff-split)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$SPLIT_OUTPUT" ] && [ "$SPLIT_OUTPUT" -ge 0 ] 2>/dev/null; then
+    pass "git-diff-split: returned $SPLIT_OUTPUT chars"
+else
+    fail "git-diff-split: invalid output" "$SPLIT_OUTPUT"
+fi
+
+# Test: git-diff-staged-split
+STAGED_SPLIT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (length (gilt.git:git-diff-staged-split)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$STAGED_SPLIT" ] && [ "$STAGED_SPLIT" -ge 0 ] 2>/dev/null; then
+    pass "git-diff-staged-split: returned $STAGED_SPLIT chars"
+else
+    fail "git-diff-staged-split: invalid output" "$STAGED_SPLIT"
+fi
+
+# Test: git-clean-dry-run
+CLEAN_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (length (gilt.git:git-clean-dry-run :directories t :force t)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$CLEAN_OUTPUT" ] && [ "$CLEAN_OUTPUT" -ge 0 ] 2>/dev/null; then
+    pass "git-clean-dry-run: returned $CLEAN_OUTPUT items"
+else
+    fail "git-clean-dry-run: invalid output" "$CLEAN_OUTPUT"
+fi
+
+# Test: git-notes functions
+NOTES_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(gilt.git:git-notes-add "HEAD" "test note")' \
+    --eval '(format t "~A" (gilt.git:git-notes-show "HEAD"))' \
+    --eval '(gilt.git:git-notes-remove "HEAD")' \
+    --eval '(quit)' 2>&1 | tail -1)
+if echo "$NOTES_OUTPUT" | grep -q "test note"; then
+    pass "git-notes: add/show/remove cycle works"
+else
+    fail "git-notes: add/show/remove failed" "$NOTES_OUTPUT"
+fi
+
+# Test: git-notes-list
+NOTES_LIST=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (length (gilt.git:git-notes-list)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$NOTES_LIST" ] && [ "$NOTES_LIST" -ge 0 ] 2>/dev/null; then
+    pass "git-notes-list: returned $NOTES_LIST entries"
+else
+    fail "git-notes-list: invalid output" "$NOTES_LIST"
+fi
+
+# Test: git-format-patch-single
+PATCH_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (gilt.git:git-format-patch-single "HEAD" :output-dir "/tmp"))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if echo "$PATCH_OUTPUT" | grep -q "\.patch"; then
+    pass "git-format-patch-single: created $PATCH_OUTPUT"
+    rm -f "/tmp/$(basename "$PATCH_OUTPUT")" 2>/dev/null
+else
+    fail "git-format-patch-single: no patch file" "$PATCH_OUTPUT"
+fi
+
+# Test: git-branch-ahead-behind
+DIVERGE_OUTPUT=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (gilt.git:git-branch-ahead-behind "main"))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$DIVERGE_OUTPUT" ]; then
+    pass "git-branch-ahead-behind: returned $DIVERGE_OUTPUT"
+else
+    fail "git-branch-ahead-behind: no output"
+fi
+
+# Test: git-submodule-conflicts
+SUB_CONFLICTS=$(cd "$REPO_DIR" && sbcl --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(push #p\"$(pwd)/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt)' \
+    --eval '(format t "~A" (length (gilt.git:git-submodule-conflicts)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$SUB_CONFLICTS" ] && [ "$SUB_CONFLICTS" -ge 0 ] 2>/dev/null; then
+    pass "git-submodule-conflicts: returned $SUB_CONFLICTS conflicts"
+else
+    fail "git-submodule-conflicts: invalid output" "$SUB_CONFLICTS"
+fi
+
+# Test: commit templates config
+# Use a temp HOME with quicklisp symlinked so SBCL can load everything
+REAL_HOME="$HOME"
+TMPL_HOME=$(mktemp -d)
+mkdir -p "$TMPL_HOME/.config/gilt"
+cat > "$TMPL_HOME/.config/gilt/commit-templates.conf" << TMPL_EOF
+feature/=feat:
+bugfix/=fix:
+main=chore:
+TMPL_EOF
+ln -s "$REAL_HOME/quicklisp" "$TMPL_HOME/quicklisp" 2>/dev/null
+# Use separate --eval forms so require:asdf loads before referencing asdf: package
+TMPL_OUTPUT=$(HOME="$TMPL_HOME" sbcl --noinform --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(load \"$TMPL_HOME/quicklisp/setup.lisp\")" \
+    --eval "(push #p\"$GILT_SRC/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:load-commit-templates)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$TMPL_OUTPUT" = "3" ] 2>/dev/null; then
+    pass "load-commit-templates: parsed $TMPL_OUTPUT templates"
+else
+    fail "load-commit-templates: expected 3, got $TMPL_OUTPUT"
+fi
+
+# Test: get-commit-template matching
+TMPL_MATCH=$(HOME="$TMPL_HOME" sbcl --noinform --non-interactive \
+    --eval '(require :asdf)' \
+    --eval "(load \"$TMPL_HOME/quicklisp/setup.lisp\")" \
+    --eval "(push #p\"$GILT_SRC/\" asdf:*central-registry*)" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (gilt.git:get-commit-template "feature/add-cool-thing"))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$TMPL_MATCH" = "feat:" ]; then
+    pass "get-commit-template: matched 'feature/' → 'feat:'"
+else
+    fail "get-commit-template: expected 'feat:', got '$TMPL_MATCH'"
+fi
+rm -rf "$TMPL_HOME"
+
 # ─── Summary ─────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════"

@@ -7,6 +7,242 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-17
+
+### Added
+
+- **Command palette** — Searchable menu of all actions
+  - Press `:` to open the command palette
+  - Type to filter commands by name
+  - `Enter` executes the selected command
+  - `j`/`k` or arrow keys to navigate, `Esc` to cancel
+- **Syntax highlighting in diffs** — Color-code file content by language using bat
+  - Blob/tree view uses `bat` (or `batcat`) for syntax highlighting
+  - `H` in tree mode toggles syntax highlighting on/off
+  - Falls back to plain text if bat is not installed
+  - `bat-available-p` and `bat-highlight` data layer functions
+- **Split diff view** — Side-by-side diff rendering
+  - Press `\` to toggle split diff mode
+  - Uses `git diff --side-by-side` with 200-column width
+  - `git-diff-split` and `git-diff-staged-split` data layer functions
+- **Numstat in file list** — Show +N -M per file in the files panel
+  - Press `=` on files panel to toggle numstat display
+  - Shows added/removed line counts per file from `git diff --numstat`
+  - `git-diff-numstat` data layer function
+- **Bulk branch operations** — Multi-select branches for batch delete
+  - `Space` on branches panel toggles branch selection (shown with `+` marker)
+  - `D` deletes all selected branches at once with confirmation dialog
+  - Toast shows count of selected branches
+- **Commit message templates** — Configurable prefixes per branch pattern
+  - `~/.config/gilt/commit-templates.conf` with `pattern=prefix` format
+  - Pattern matched against branch name (substring match)
+  - Prefix pre-filled in commit dialog when on matching branch
+  - `load-commit-templates` and `get-commit-template` data layer functions
+  - Example config at `commit-templates.example.conf`
+- **Not-in-repo behavior** — Init/clone/browse recent from startup
+  - When started outside a git repo, offers interactive menu:
+    - `[1]` Initialize a new repository here
+    - `[2]` Clone a repository (prompts for URL)
+    - `[3]` Browse recent repositories (numbered list)
+    - `[q]` Quit
+  - Successfully opened repos are saved to recent repos list
+- **Git notes support** — Add/edit/view git notes
+  - `N` on commits panel opens dialog to add/edit note for selected commit
+  - Notes shown in commit detail view
+  - Dialog supports Save, Delete, and Cancel
+  - `git-notes-show`, `git-notes-add`, `git-notes-remove`, `git-notes-list` data layer functions
+- **git clean integration** — Dry-run preview + confirm + clean -fd
+  - `K` on files panel shows preview of what would be removed
+  - Dialog offers `Clean -fd` (untracked) and `Clean -fdx` (include ignored)
+  - `git-clean-dry-run` and `git-clean` data layer functions
+- **Format-patch / apply-patch** — git format-patch + git am wrappers
+  - `F` on commits panel creates a patch file for the selected commit
+  - `A` on files panel opens dialog to apply a patch file
+  - Dialog supports `git apply`, `git am`, and check-only modes
+  - `git-format-patch`, `git-format-patch-single`, `git-apply-patch-file`, `git-am-patch` data layer functions
+  - Makefile fix: `make install` no longer rebuilds under sudo
+- **Submodule conflict resolution** — Conflict detection + resolution UI
+  - `M` on files panel detects submodule conflicts
+  - Dialog offers resolve with ours or theirs strategy
+  - `git-submodule-conflicts` and `git-submodule-resolve` data layer functions
+- **Divergence indicators** — Ahead/behind counts in branch list
+  - `%` on branches panel toggles divergence indicators
+  - Shows `↑N↓M` for ahead/behind counts vs upstream
+  - Color-coded: green for ahead, red for behind
+  - `git-branch-ahead-behind` data layer function
+
+## [0.18.0] - 2026-08-16
+
+### Added
+
+- **Reflog viewer** — Browse git reflog entries in a dedicated panel view
+  - Press `w` on files panel to cycle Files → Worktrees → Stashes → Reflog → Files
+  - Shows reflog selector (HEAD@{N}), short hash, and action message
+  - `Enter` shows full commit details (hash, selector, action, full message)
+  - `X` resets to any reflog entry (soft/mixed/hard)
+  - Main panel shows diff of selected reflog entry vs current HEAD
+  - `/` filters reflog entries by message or hash
+- **Grep view** — Search file contents across the repo using `git grep`
+  - Press `w` on files panel to cycle to Grep view
+  - Press `/` to enter search pattern, results show file:line:content
+  - `Enter` opens the file in `$EDITOR` at the matching line
+  - Main panel shows file content with context around the matching line (highlighted)
+  - `git-show-file` data layer function for viewing file content at any ref
+- **Tree/Blob view** — Browse the directory tree of any commit and view file contents
+  - Press `T` on commits panel to browse the tree at that commit
+  - Directories shown with `[D]`, files with `[F]`, sorted dirs-first
+  - `Enter` on a directory descends into it; `Enter` on a file shows its content
+  - `Esc` goes up one level, or exits tree mode at root
+  - `..` entry navigates to parent directory
+  - Main panel shows file content with line numbers (blob view)
+  - `git-ls-tree` data layer function for listing tree entries
+- **Multi-commit cherry-pick** — Copy multiple commits and cherry-pick all at once
+  - Press `Space` on commits panel to toggle a commit in the copy list (shown with `+` marker)
+  - Press `V` to paste (cherry-pick all copied commits in order, oldest first)
+  - Toast shows count of copied commits
+- **Line range tracing** — Trace the history of a line using `git log -L`
+  - In blame view, press `L` to trace the selected line's history
+  - Shows list of commits that touched that line, with author/date/message
+  - `Enter` shows the diff for the selected trace entry
+  - `Esc` returns to blame view
+- **Blame enhancements** — Enhanced blame view with parent navigation and copy detection
+  - `p` navigates to the parent commit's blame (go backwards in history)
+  - `C` toggles copy detection (`-C` flag) to detect code moved from other files
+  - `o` opens the file at the selected line in `$EDITOR`
+  - `L` traces the selected line's history (line range tracing)
+  - `git-blame-at` and `git-blame-parent` data layer functions
+- **Diff search** — Search within diff text in the main panel
+  - Focus the main panel (Tab), then press `/` to search within the diff
+  - `n` jumps to next match, `N` jumps to previous match
+  - Toast shows match count
+- **Commit graph improvements** — Better graph layout and all-branches commit list
+  - `--topo-order` flag for cleaner graph layout (no intermixed branch lines)
+  - `G` (capital) toggles all-branches mode for the commits panel
+  - `git-log-all` data layer function for all-branch commits in topo order
+- **Force push options** — Safer push options with force-with-lease and set-upstream
+  - `P` dialog now offers: Push, Force with Lease, Force Push, Set Upstream
+  - Force with Lease only forces if remote ref hasn't changed since last fetch
+  - Set Upstream pushes and sets tracking branch
+  - `git-push-force-with-lease`, `git-push-force`, `git-push-set-upstream` data layer functions
+- **Pull with rebase/FF-only** — Pull options dialog
+  - `p` dialog now offers: Pull, Pull --rebase, Pull --ff-only
+  - Pull --rebase rebases local commits on top of pulled changes
+  - Pull --ff-only only fast-forwards, fails if diverged
+- **Clone/Init from UI** — Clone a repository or init a new one from within gilt
+  - `Alt+c` opens Clone dialog, enter URL to clone
+  - `Alt+i` opens Init dialog, initializes git repo in current directory
+  - After cloning, gilt switches to the cloned repository
+  - `git-clone` data layer function
+- **Configurable keybindings** — Keybinding map with config parsing and context system
+  - `~/.config/gilt/keybindings.conf` file with `[context]` sections
+  - Contexts: global, files, branches, commits, tags, stashes
+  - Format: `key=action` per line, context-specific bindings checked first then global
+  - `load-keybindings` and `lookup-keybinding` data layer functions
+  - Example config file at `keybindings.example.conf`
+- **Command palette** — Searchable menu of all actions
+  - Press `:` to open the command palette
+  - Type to filter commands by name
+  - `Enter` executes the selected command
+  - `j`/`k` or arrow keys to navigate, `Esc` to cancel
+- **Syntax highlighting in diffs** — Color-code file content by language using bat
+  - Blob/tree view uses `bat` (or `batcat`) for syntax highlighting
+  - `H` in tree mode toggles syntax highlighting on/off
+  - Falls back to plain text if bat is not installed
+  - `bat-available-p` and `bat-highlight` data layer functions
+- **Split diff view** — Side-by-side diff rendering
+  - Press `\` to toggle split diff mode
+  - Uses `git diff --side-by-side` with 200-column width
+  - `git-diff-split` and `git-diff-staged-split` data layer functions
+- **Numstat in file list** — Show +N -M per file in the files panel
+  - Press `=` on files panel to toggle numstat display
+  - Shows added/removed line counts per file from `git diff --numstat`
+  - `git-diff-numstat` data layer function
+- **Bulk branch operations** — Multi-select branches for batch delete
+  - `Space` on branches panel toggles branch selection (shown with `+` marker)
+  - `D` deletes all selected branches at once with confirmation dialog
+  - Toast shows count of selected branches
+- **Commit message templates** — Configurable prefixes per branch pattern
+  - `~/.config/gilt/commit-templates.conf` with `pattern=prefix` format
+  - Pattern matched against branch name (substring match)
+  - Prefix pre-filled in commit dialog when on matching branch
+  - `load-commit-templates` and `get-commit-template` data layer functions
+  - Example config at `commit-templates.example.conf`
+- **Not-in-repo behavior** — Init/clone/browse recent from startup
+  - When started outside a git repo, offers interactive menu:
+    - `[1]` Initialize a new repository here
+    - `[2]` Clone a repository (prompts for URL)
+    - `[3]` Browse recent repositories (numbered list)
+    - `[q]` Quit
+  - Successfully opened repos are saved to recent repos list
+- **Git notes support** — Add/edit/view git notes
+  - `N` on commits panel opens dialog to add/edit note for selected commit
+  - Notes shown in commit detail view
+  - Dialog supports Save, Delete, and Cancel
+  - `git-notes-show`, `git-notes-add`, `git-notes-remove`, `git-notes-list` data layer functions
+- **git clean integration** — Dry-run preview + confirm + clean -fd
+  - `K` on files panel shows preview of what would be removed
+  - Dialog offers `Clean -fd` (untracked) and `Clean -fdx` (include ignored)
+  - `git-clean-dry-run` and `git-clean` data layer functions
+- **Format-patch / apply-patch** — git format-patch + git am wrappers
+  - `F` on commits panel creates a patch file for the selected commit
+  - `A` on files panel opens dialog to apply a patch file
+  - Dialog supports `git apply`, `git am`, and check-only modes
+  - `git-format-patch`, `git-format-patch-single`, `git-apply-patch-file`, `git-am-patch` data layer functions
+- **Makefile fix** — `make install` no longer rebuilds under sudo
+  - `install` target checks for existing binary instead of depending on build target
+- **Submodule conflict resolution** — Conflict detection + resolution UI
+  - `M` on files panel detects submodule conflicts
+  - Dialog offers resolve with ours or theirs strategy
+  - `git-submodule-conflicts` and `git-submodule-resolve` data layer functions
+- **Divergence indicators** — Ahead/behind counts in branch list
+  - `%` on branches panel toggles divergence indicators
+  - Shows `↑N↓M` for ahead/behind counts vs upstream
+  - Color-coded: green for ahead, red for behind
+  - `git-branch-ahead-behind` data layer function
+- **Comprehensive worktree management** — Full lazygit-parity worktree features:
+  - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
+  - **Leave worktree** (`Esc`) — returns to the parent repository context
+  - **Open worktree in editor** (`o` in worktrees view) — opens the worktree directory in `$EDITOR`
+  - **Lock/unlock worktree** (`L` in worktrees view) — lock with optional reason, unlock
+  - **Prune worktrees** (`p` in worktrees view) — removes stale worktree entries
+  - **Enhanced worktree removal** (`D` in worktrees view) — options to remove only, remove + delete local branch, or remove + delete both local and remote branches
+  - **Cross-panel worktree creation** (`W` on branches/commits/tags/stashes panels) — creates a worktree from the selected ref with context-sensitive options (new branch + worktree, checkout in worktree, detached worktree, tracking branch + worktree)
+  - **Location picker for new worktrees** — "Pick Location" button in Add Worktree dialog shows candidate parent directories (existing worktree parents, configured default path, repo root parent, home directory)
+  - **Auto-switch after creating worktree** — automatically switches into the newly created worktree after creation
+  - **Configurable default worktree path** — set `defaultPath=` in `~/.config/gilt/worktree.conf` to add a default parent directory to the location picker
+  - **Worktree details in main panel** — shows name, branch, path, and status indicators (bare, detached, locked, missing, current, main) with color coding
+  - **Current worktree indicator** — `*` marker and green color on the current worktree in the list
+  - **Main worktree label** — `(main)` label on the main worktree
+  - **Missing worktree detection** — shows `(missing)` in red for worktrees whose directories have been deleted but not pruned
+  - **Uniquified worktree names** — derives short unique names from paths (e.g. `/repo/feature-foo` → `feature-foo`), disambiguating collisions by prepending parent dirs
+  - **Detect branch during rebase/bisect** — reads `rebase-merge/head-name` and `BISECT_START` to find the branch name when `git worktree list` doesn't show it
+- **Checkout branch → redirect to worktree** — when checking out a branch that's already checked out in another worktree, offers to switch to that worktree instead of failing
+- **Detach worktree then delete branch** — when deleting a branch checked out in another worktree, offers to detach the worktree first or remove it entirely, then delete the branch
+- **Fast-forward branch in worktree** — `F` on a branch checked out in another worktree runs the fast-forward fetch in that worktree's git directory without switching
+- **Worktree move** — `git worktree move` support in the data layer
+- **Worktree repair** — `git worktree repair` support in the data layer
+- **Dialog input pre-fill** — `make-dialog` now accepts `:input-buffer` to pre-fill the input field (used by location picker)
+- **Updated help text** — all new worktree keybindings documented in help overlay and context-sensitive help bars
+
+### Changed
+
+- Bumped version to 0.18.0
+
+## [0.17.0] - 2026-04-16
+
+### Added
+
+- **Multi-arch CI release builds** - GitHub Actions now builds binaries for Linux x86_64, macOS arm64, and macOS x86_64
+  - Triggered automatically on tag push or manually via workflow dispatch
+  - macOS x86_64 built via Rosetta on arm64 runner
+
+### Fixed
+
+- **Pre-built binaries not accepting keyboard input on macOS** - CI-built saved images had stale terminal state baked in from the build environment
+  - All terminal state now deferred to runtime initialization
+  - Raw mode and ioctl use an explicit `/dev/tty` fd opened at runtime instead of relying on SBCL's internal `sb-sys:*stdin*`
+  - TTY path, escape timeout, terminal mode, and input reader all initialized fresh on startup
+
 ## [0.16.0] - 2026-04-15
 
 ### Added
@@ -250,7 +486,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Branch tracking info (ahead/behind upstream)
   - Repository state indicator (MERGING, REBASING, etc.)
 
-[Unreleased]: https://github.com/parenworks/gilt/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/parenworks/gilt/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/parenworks/gilt/compare/v0.17.0...v0.18.0
+[0.17.0]: https://github.com/parenworks/gilt/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/parenworks/gilt/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/parenworks/gilt/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/parenworks/gilt/compare/v0.13.0...v0.14.0

@@ -69,7 +69,11 @@
            #:underline
            #:inverse
            #:color-code
-           #:with-style))
+           #:with-style
+           ;; Theme loading
+           #:load-theme-file
+           #:load-user-theme
+           #:*color-palette*))
 
 (defpackage #:gilt.terminal
    (:use #:cl #:gilt.ansi)
@@ -90,6 +94,7 @@
             ;; Configuration
             #:wait-for-escape-sequence
             #:*tty-path*
+            #:*tty-fd*
             #:*escape-timeout*
             ;; Input reader class
             #:input-reader
@@ -102,6 +107,8 @@
             #:install-sigwinch-handler
             #:uninstall-sigwinch-handler
             #:check-resize
+            ;; Runtime initialization
+            #:initialize-terminal
             ;; Convenience functions
             #:with-raw-terminal
             #:terminal-size
@@ -201,12 +208,18 @@
            #:git-run
            #:git-run-lines
            #:git-status
+           #:git-diff-numstat
+           #:git-init
+           #:git-clone
            #:git-branch-tracking-info
            #:git-repo-state
            #:git-diff
            #:git-diff-staged
+           #:git-diff-split
+           #:git-diff-staged-split
            #:git-log
            #:git-log-graph
+           #:git-log-all
            #:git-log-search
            #:git-log-branch-only
            #:git-branches
@@ -232,6 +245,7 @@
            #:git-merge-in-progress-p
            #:git-mark-resolved
            #:git-edit-file
+           #:git-open-in-editor
            #:git-resolve-with-ours
            #:git-resolve-with-theirs
            #:git-delete-branch
@@ -254,6 +268,10 @@
            #:git-stage-hunk
            #:git-stage-lines
            #:build-partial-patch
+           #:git-commit-files
+           #:git-commit-diff
+           #:git-diff-refs
+           #:git-diff-refs-stat
            #:git-stash
            #:git-stash-pop
            #:git-stash-list
@@ -269,6 +287,7 @@
            #:git-commit-set-author
            #:git-commit-add-coauthor
            #:git-create-branch
+           #:git-move-commits-to-new-branch
            #:git-rename-branch
            #:git-fast-forward
            #:git-unstage-all
@@ -276,6 +295,42 @@
            #:git-commit-no-verify
            #:git-undo
            #:git-redo
+           #:reflog-entry
+           #:reflog-hash
+           #:reflog-short-hash
+           #:reflog-ref
+           #:reflog-message
+           #:reflog-selector
+           #:make-reflog-entry
+           #:git-reflog
+           #:git-reflog-diff
+           #:git-reflog-show
+           #:grep-result
+           #:grep-result-file
+           #:grep-result-line
+           #:grep-result-content
+           #:make-grep-result
+           #:git-grep
+           #:git-show-file
+           #:bat-available-p
+           #:bat-highlight
+           #:tree-entry
+           #:tree-entry-mode
+           #:tree-entry-type
+           #:tree-entry-hash
+           #:tree-entry-name
+           #:tree-entry-path
+           #:make-tree-entry
+           #:git-ls-tree
+           #:trace-entry
+           #:trace-commit-hash
+           #:trace-short-hash
+           #:trace-author
+           #:trace-date
+           #:trace-message
+           #:trace-diff
+           #:make-trace-entry
+           #:git-log-line-range
            #:git-checkout-tag
            #:git-rename-stash
            #:git-set-upstream
@@ -309,12 +364,28 @@
            #:git-flow-hotfix-finish
            #:custom-commands-file
            #:load-custom-commands
+           #:keybindings-file
+           #:load-keybindings
+           #:lookup-keybinding
+           #:commit-templates-file
+           #:load-commit-templates
+           #:get-commit-template
            #:git-diff-lines
            #:git-apply-patch
+           #:parse-commit-hunks
+           #:build-full-patch
+           #:build-reverse-patch-from-hunk
+           #:apply-patch-to-index
+           #:apply-reverse-patch-to-index
+           #:create-commit-from-patch
            #:git-push
            #:git-pull
            #:git-push-interactive
            #:git-pull-interactive
+           #:git-push-force-with-lease
+           #:git-push-force
+           #:git-push-set-upstream
+           #:git-current-branch
            #:git-fetch
            #:git-remotes
            #:git-remote-url
@@ -336,7 +407,10 @@
            #:git-submodule-sync
            #:git-submodule-add
            #:git-submodule-deinit
+           #:git-submodule-conflicts
+           #:git-submodule-resolve
            #:git-ahead-behind
+           #:git-branch-ahead-behind
            #:git-config-list
            #:git-config-get
            #:git-config-set
@@ -349,10 +423,30 @@
            #:git-worktree-list
            #:git-worktree-add
            #:git-worktree-add-new-branch
+           #:git-worktree-add-detached
+           #:git-worktree-add-from-ref
            #:git-worktree-remove
+           #:git-worktree-move
            #:git-worktree-lock
            #:git-worktree-unlock
            #:git-worktree-prune
+           #:git-worktree-repair
+           #:git-worktree-candidate-paths
+           #:gilt-worktree-default-path
+           #:gilt-worktree-config-file
+           #:git-fast-forward-in-worktree
+           #:git-upstream-remote
+           #:git-upstream-branch
+           #:git-run-in-dir
+           #:expand-tilde-path
+           #:git-worktree-remove-and-delete-branch
+           #:git-worktree-detach
+           #:git-worktree-detect-branch
+           #:git-worktree-current-path
+           #:git-branch-exists-p
+           #:git-branch-in-worktree-p
+           #:enter-worktree
+           #:leave-worktree
            #:worktree-entry
            #:worktree-path
            #:worktree-head
@@ -360,12 +454,19 @@
            #:worktree-bare
            #:worktree-detached
            #:worktree-locked
+           #:worktree-locked-reason
            #:worktree-prunable
+           #:worktree-current
+           #:worktree-main
+           #:worktree-missing
+           #:worktree-name
            #:make-worktree-entry
            #:git-repo-root
            #:git-repo-name
            #:git-commit-message
            #:git-blame
+           #:git-blame-at
+           #:git-blame-parent
            #:blame-line
            #:blame-line-hash
            #:blame-line-short-hash
@@ -394,6 +495,16 @@
            #:git-stash-clear
            #:git-stash-show
            #:git-stash-branch
+           #:git-notes-show
+           #:git-notes-add
+           #:git-notes-remove
+           #:git-notes-list
+           #:git-clean-dry-run
+           #:git-clean
+           #:git-format-patch
+           #:git-format-patch-single
+           #:git-apply-patch-file
+           #:git-am-patch
            ;; Interactive rebase
            #:rebase-todo-entry
            #:make-rebase-todo-entry
@@ -408,7 +519,13 @@
            #:git-rebase-abort
            #:git-rebase-continue
            #:git-rebase-skip
-           #:git-rebase-onto))
+           #:git-rebase-onto
+           ;; Update checker
+           #:*github-repo*
+           #:check-for-updates
+           ;; Rename similarity threshold
+           #:*rename-threshold*
+           #:rename-threshold-arg))
 
 (defpackage #:gilt.pty
   (:use #:cl)

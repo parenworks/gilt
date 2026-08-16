@@ -79,13 +79,17 @@ Each commit line shows:
 | `r` | Refresh all data |
 | `q` | Quit Gilt |
 | `/` | Search commits or filter files/branches/stashes |
-| `:` | Run shell command (vim-style) |
+| `:` | Open command palette (searchable menu of all actions) |
+| `!` | Run shell command (vim-style) |
 | `PgUp`/`PgDn` | Page up/down in lists |
 | `+` | Cycle screen mode: normal/half/full |
+| `\` | Toggle split diff (side-by-side) view |
 | `L` (capital) | Show recent repos (Enter to switch) |
 | `E` (capital) | Git-flow menu (feature/release/hotfix) |
 | `z` | Undo last git command (via reflog) |
 | `Z` | Redo last undone command |
+| `M-c` (Alt+c) | Clone repository dialog |
+| `M-i` (Alt+i) | Init repository dialog |
 
 ### Files Panel `[2]`
 
@@ -111,7 +115,11 @@ Each commit line shows:
 | `w` | Cycle: Files → Worktrees → Stashes |
 | `W` (capital) | Commit without pre-commit hook |
 | `P` (capital) | Push to remote (with Force Push option) |
-| `p` (lowercase) | Pull from remote |
+| `p` (lowercase) | Pull from remote (with rebase/ff-only options) |
+| `=` | Toggle numstat display (+N -M per file) |
+| `K` (capital) | git clean - dry-run preview and confirm |
+| `A` (capital) | Apply patch (git apply / git am) |
+| `M` (capital) | Detect and resolve submodule conflicts |
 
 ### Worktrees View (in Files Panel)
 
@@ -161,8 +169,11 @@ Press `w` in the Files panel to cycle to Stashes view.
 | `o` | Open branch in browser |
 | `O` (capital) | Create pull request for branch (opens browser) |
 | `Enter` | Enter submodule (in Submodules view) |
-| `D` (capital) | Delete selected branch |
+| `D` (capital) | Delete selected branch (or bulk delete selected) |
 | `C` (capital) | Cherry-pick commits from selected branch |
+| `Space` | Toggle branch selection for bulk operations |
+| `%` | Toggle ahead/behind divergence indicators |
+| `G` (capital) | Toggle all-branches commit graph mode |
 
 ### Remotes View (in Branches Panel)
 
@@ -213,6 +224,11 @@ Press `w` three times from Local branches to reach Submodules view.
 | `b` | Start bisect (then `b`:bad `g`:good `Q`:reset) |
 | `y` | Copy commit hash to clipboard |
 | `o` | Open commit in browser |
+| `N` (capital) | Add/edit git note for selected commit |
+| `F` (capital) | Format patch for selected commit |
+| `Space` | Toggle commit selection for multi-cherry-pick (shown with `+`) |
+| `V` (capital) | Cherry-pick all copied commits (paste) |
+| `T` (capital) | Browse tree/blob at selected commit |
 
 ### Stash Panel `[5]`
 
@@ -465,6 +481,179 @@ When a merge results in conflicts, conflicted files appear with a **red `!`** in
 - Look for conflict markers: `<<<<<<<`, `=======`, `>>>>>>>`
 - Edit the file to resolve conflicts, save, and exit
 - The file will still show as conflicted until you stage it with `Space`
+
+---
+
+## New Features (v0.18.0 - v0.19.0)
+
+### Command Palette
+
+Quickly find and execute any command by name:
+
+1. Press `:` from any panel
+2. Type to filter the list of all available commands
+3. Use `j`/`k` or arrow keys to navigate
+4. Press `Enter` to execute the selected command
+5. Press `Escape` to cancel
+
+The palette shows all actions with their shortcut keys, making it easy to discover features you may have forgotten.
+
+### Syntax Highlighting
+
+View file content with syntax highlighting in the tree/blob view:
+
+1. Press `T` on the commits panel to browse a commit's tree
+2. Select a file and press `Enter` to view its content
+3. If `bat` (or `batcat`) is installed, content is automatically syntax-highlighted
+4. Press `H` (capital) in tree mode to toggle highlighting on/off
+5. Falls back to plain text with line numbers if bat is not installed
+
+### Split Diff View
+
+View diffs side-by-side instead of inline:
+
+1. Select a file in the Files panel to see its diff
+2. Press `\` (backslash) to toggle split diff mode
+3. The main panel title changes to "Split Diff" when active
+4. Uses `git diff --side-by-side` with 200-column width
+5. Press `\` again to return to normal inline diff view
+
+### Numstat in File List
+
+See how many lines were added/removed per file:
+
+1. Navigate to the **Files panel** (`2`)
+2. Press `=` to toggle numstat display
+3. Each file shows `+N -M` suffix (e.g., `M src/git.lisp +42-18`)
+4. Press `=` again to hide
+
+### Bulk Branch Operations
+
+Select multiple branches and delete them all at once:
+
+1. Navigate to the **Branches panel** (`3`)
+2. Press `Space` on branches to toggle selection (shown with `+` marker)
+3. A toast shows the count of selected branches
+4. Press `D` (capital) to open the bulk delete dialog
+5. Confirm with "Delete All" or cancel
+
+### Commit Message Templates
+
+Automatically pre-fill commit message prefixes based on branch name:
+
+1. Create `~/.config/gilt/commit-templates.conf`
+2. Add patterns in `pattern=prefix` format:
+   ```
+   feature/=feat:
+   bugfix/=fix:
+   hotfix/=fix:
+   main=chore:
+   ```
+3. When you press `c` to commit on a matching branch, the prefix is pre-filled
+4. The dialog shows "Template prefix: feat:" as a hint
+5. See `commit-templates.example.conf` for reference
+
+### Not-In-Repo Behavior
+
+When you start gilt outside a git repository, you get an interactive menu:
+
+- `[1]` Initialize a new repository in the current directory
+- `[2]` Clone a repository (prompts for URL)
+- `[3]` Browse recent repositories (numbered list)
+- `[q]` Quit
+
+Successfully opened repos are saved to the recent repos list for future use.
+
+### Git Notes
+
+Add, edit, or view git notes on any commit:
+
+1. Navigate to the **Commits panel** (`4`)
+2. Select a commit
+3. Press `N` (capital) to open the Git Note dialog
+4. If a note exists, it's pre-filled in the input
+5. Choose "Save" to add/update, "Delete" to remove, or "Cancel"
+6. Notes are displayed in the commit detail view (below the commit message)
+
+### git clean Integration
+
+Preview and remove untracked files:
+
+1. Navigate to the **Files panel** (`2`)
+2. Press `K` (capital) to preview what would be removed
+3. The dialog shows a list of files/directories that `git clean` would remove
+4. Choose:
+   - "Clean -fd" to remove untracked files and directories
+   - "Clean -fdx" to also remove ignored files
+   - "Cancel" to abort
+5. If nothing to clean, a toast says "Nothing to clean"
+
+### Format-Patch / Apply-Patch
+
+Export and import commits as patch files:
+
+**Creating a patch:**
+1. Navigate to the **Commits panel** (`4`)
+2. Select a commit
+3. Press `F` (capital) to create a patch file
+4. A toast shows the generated filename (e.g., `0001-commit-msg.patch`)
+
+**Applying a patch:**
+1. Navigate to the **Files panel** (`2`)
+2. Press `A` (capital) to open the Apply Patch dialog
+3. Enter the patch file path
+4. Choose:
+   - "Apply (git apply)" to apply changes to working tree
+   - "Apply (git am)" to apply and create a commit
+   - "Check" to verify the patch applies cleanly without changing anything
+   - "Cancel" to abort
+
+### Submodule Conflict Resolution
+
+Detect and resolve merge conflicts in submodules:
+
+1. Navigate to the **Files panel** (`2`)
+2. Press `M` (capital) to check for submodule conflicts
+3. If conflicts exist, a dialog lists them and offers:
+   - "Resolve (ours)" to take your version
+   - "Resolve (theirs)" to take their version
+   - "Cancel" to resolve manually
+4. If no conflicts, a toast says "No submodule conflicts"
+
+### Divergence Indicators
+
+See how far each branch has diverged from its upstream:
+
+1. Navigate to the **Branches panel** (`3`)
+2. Press `%` to toggle divergence indicators
+3. Each branch shows `↑N↓M` (ahead N, behind M) vs its upstream
+4. Ahead count is green, behind count is red
+5. Press `%` again to hide
+
+### Configurable Keybindings
+
+Customize keybindings via a config file:
+
+1. Create `~/.config/gilt/keybindings.conf`
+2. Define context-specific bindings:
+   ```
+   [global]
+   q=quit
+   r=refresh
+   
+   [files]
+   s=stage
+   u=unstage
+   ```
+3. See `keybindings.example.conf` for all available contexts and actions
+
+### Clone/Init from UI
+
+Clone or initialize repositories without leaving gilt:
+
+- Press `M-c` (Alt+c) to open the Clone dialog
+- Press `M-i` (Alt+i) to open the Init dialog
+- Both prompt for URL/path and execute the operation
 
 ---
 

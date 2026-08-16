@@ -8,7 +8,7 @@
 ;;; - MAJOR: incompatible API changes
 ;;; - MINOR: new functionality (backwards compatible)
 ;;; - PATCH: bug fixes (backwards compatible)
-(defparameter *version* "0.16.0"
+(defparameter *version* "0.19.0"
   "Gilt version number")
 
 ;;; Application class - encapsulates all application state
@@ -95,12 +95,15 @@
         (setf (app-width app) (first resize)
               (app-height app) (second resize))
         (app-render app)))
-    ;; Check if current view has an active runner - use timeout if so
+    ;; Check if current view has an active runner or toast - use timeout if so
     (let* ((view (app-current-view app))
            (has-runner (and view 
                             (slot-boundp view 'gilt.views::active-runner)
                             (slot-value view 'gilt.views::active-runner)))
-           (key (if has-runner
+           (has-toast (and view
+                           (slot-boundp view 'gilt.views::toast-message)
+                           (slot-value view 'gilt.views::toast-message)))
+           (key (if (or has-runner has-toast)
                     (read-key-with-timeout 100)  ; 100ms timeout for polling
                     (read-key-with-timeout 500)))) ; 500ms timeout to check resize
       ;; Check for resize again after read returns (signal interrupts read)
@@ -128,6 +131,20 @@
         (when (and current-runner (null key))
           ;; Poll the runner for updates
           (gilt.pty:runner-poll current-runner)
+          ;; Check for credential prompts in current partial line
+          (let ((partial (gilt.pty:runner-current-line current-runner)))
+            (when (and (not (gilt.pty:runner-finished-p current-runner))
+                       (not (gilt.views::active-dialog view))
+                       (> (length partial) 0)
+                       (gilt.views::credential-prompt-p partial))
+              ;; Show credential input dialog
+              (setf (gilt.views::active-dialog view)
+                    (gilt.views::make-dialog
+                     :title "Credential Required"
+                     :message partial
+                     :input-mode t
+                     :data (list :credential-prompt t)
+                     :buttons '("Send" "Cancel")))))
           ;; Update main panel with output
           (let ((output (gilt.pty:runner-get-output current-runner)))
             (setf (gilt.ui:panel-items (gilt.views::main-panel view))
@@ -138,7 +155,24 @@
                                             (gilt.pty:runner-exit-code current-runner))
                                     "Press any key to continue...")
                               (list "" (slot-value view 'gilt.views::runner-title))))))
-          (app-render app))))))
+          (app-render app)))
+      ;; Check if toast expired and needs re-render
+      (when (and has-toast (null key)
+                 (gilt.views::toast-expired-p view))
+        (app-render app))
+      ;; Background auto-refresh and auto-fetch (on timeout, no key pressed)
+      (when (and view (null key) (not has-runner))
+        (let ((refreshed nil))
+          ;; Check background update result
+          (gilt.views::check-update-result view)
+          ;; Check/start background fetch
+          (when (gilt.views::maybe-auto-fetch view)
+            (setf refreshed t))
+          ;; Auto-refresh git status periodically
+          (when (gilt.views::maybe-auto-refresh view)
+            (setf refreshed t))
+          (when refreshed
+            (app-render app)))))))
 
 ;;; Global application instance
 (defparameter *app* nil "The current Gilt application instance")
@@ -165,6 +199,8 @@
   "Entry point - run Gilt"
   ;; Check for git repo before entering raw mode (so prompt works normally)
   (gilt.git:ensure-repo)
+  ;; Load user theme overrides before UI starts
+  (gilt.ansi:load-user-theme)
   (with-raw-terminal
     (setf *app* (make-instance 'application))
     (app-init *app*)
@@ -173,13 +209,15 @@
 (defun main ()
   "Main entry point for executable"
   (let ((args (uiop:command-line-arguments)))
+    ;; Handle --version before terminal init (no TTY needed, works in CI)
+    (when (or (member "--version" args :test #'string=)
+              (member "-v" args :test #'string=))
+      (format t "gilt version ~A~%" *version*)
+      (finish-output)
+      (sb-ext:exit :code 0))
+    ;; Initialize terminal subsystem at runtime (not baked into saved image)
+    (gilt.terminal:initialize-terminal)
     (cond
-      ;; Version flag
-      ((or (member "--version" args :test #'string=)
-           (member "-v" args :test #'string=))
-       (format t "gilt version ~A~%" *version*)
-       (finish-output)
-       (sb-ext:exit :code 0))
       ;; Debug flag - run diagnostics using FFI termios
       ((member "--debug" args :test #'string=)
        (let ((tty-path (namestring gilt.terminal:*tty-path*)))

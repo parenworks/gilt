@@ -25,8 +25,12 @@ run:
 run-bin: $(BINARY)
 	./$(BINARY)
 
-# Install to system
-install: $(BINARY)
+# Install to system (does not rebuild; run 'make build' first)
+install:
+	@if [ ! -f $(BINARY) ]; then \
+		echo "Error: $(BINARY) not found. Run 'make build' first."; \
+		exit 1; \
+	fi
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 755 $(BINARY) $(DESTDIR)$(BINDIR)/
 
