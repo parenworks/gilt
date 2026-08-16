@@ -882,6 +882,201 @@ else
     fail "Rename threshold returned: '$RENAME' (expected 'NIL -M50% NIL')"
 fi
 
+# ─── 8.5 v0.18.0 Feature Tests ───────────────────────────────────
+section "8.5 v0.18.0 Features"
+
+# Test: git-reflog
+REFLOG_OUTPUT=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-reflog :limit 10)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$REFLOG_OUTPUT" ] && [ "$REFLOG_OUTPUT" -ge 0 ] 2>/dev/null; then
+    pass "git-reflog: returned $REFLOG_OUTPUT entries"
+else
+    fail "git-reflog: invalid output" "$REFLOG_OUTPUT"
+fi
+
+# Test: git-reflog-show
+REFLOG_SHOW=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-reflog-show "HEAD@{0}")))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$REFLOG_SHOW" ] && [ "$REFLOG_SHOW" -ge 0 ] 2>/dev/null; then
+    pass "git-reflog-show: returned $REFLOG_SHOW chars"
+else
+    fail "git-reflog-show: invalid output" "$REFLOG_SHOW"
+fi
+
+# Test: git-grep
+GREP_OUTPUT=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-grep "test" :ignore-case t)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$GREP_OUTPUT" ] && [ "$GREP_OUTPUT" -ge 0 ] 2>/dev/null; then
+    pass "git-grep: found $GREP_OUTPUT matches for 'test'"
+else
+    fail "git-grep: invalid output" "$GREP_OUTPUT"
+fi
+
+# Test: git-ls-tree
+LS_TREE=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-ls-tree "HEAD")))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$LS_TREE" ] && [ "$LS_TREE" -gt 0 ] 2>/dev/null; then
+    pass "git-ls-tree: returned $LS_TREE entries"
+else
+    fail "git-ls-tree: no entries" "$LS_TREE"
+fi
+
+# Test: git-show-file
+SHOW_FILE=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-show-file "HEAD" "README.md")))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$SHOW_FILE" ] && [ "$SHOW_FILE" -gt 0 ] 2>/dev/null; then
+    pass "git-show-file: returned $SHOW_FILE chars for README.md"
+else
+    fail "git-show-file: no content" "$SHOW_FILE"
+fi
+
+# Test: git-log-line-range (line trace)
+LINE_TRACE=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-log-line-range "README.md" 1 5 :limit 5)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$LINE_TRACE" ] && [ "$LINE_TRACE" -ge 0 ] 2>/dev/null; then
+    pass "git-log-line-range: returned $LINE_TRACE trace entries"
+else
+    fail "git-log-line-range: invalid output" "$LINE_TRACE"
+fi
+
+# Test: git-blame
+BLAME=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-blame "README.md")))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$BLAME" ] && [ "$BLAME" -gt 0 ] 2>/dev/null; then
+    pass "git-blame: returned $BLAME blame lines for README.md"
+else
+    fail "git-blame: no output" "$BLAME"
+fi
+
+# Test: git-blame-at with ref
+BLAME_REF=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-blame-at "README.md" :ref "HEAD")))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$BLAME_REF" ] && [ "$BLAME_REF" -gt 0 ] 2>/dev/null; then
+    pass "git-blame-at: returned $BLAME_REF lines with ref=HEAD"
+else
+    fail "git-blame-at: no output" "$BLAME_REF"
+fi
+
+# Test: git-log-all (commit graph)
+LOG_ALL=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (length (gilt.git:git-log-all :count 50)))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ -n "$LOG_ALL" ] && [ "$LOG_ALL" -gt 0 ] 2>/dev/null; then
+    pass "git-log-all: returned $LOG_ALL commits"
+else
+    fail "git-log-all: no commits" "$LOG_ALL"
+fi
+
+# Test: git-push-force-with-lease (just check function exists)
+PUSH_FWL=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval "(format t \"~A\" (let ((s (find-symbol \"GIT-PUSH-FORCE-WITH-LEASE\" :gilt.git))) (not (null (and s (fboundp s))))))" \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$PUSH_FWL" = "T" ]; then
+    pass "git-push-force-with-lease: function exists"
+else
+    fail "git-push-force-with-lease: function not found"
+fi
+
+# Test: git-push-force (just check function exists)
+PUSH_F=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval "(format t \"~A\" (let ((s (find-symbol \"GIT-PUSH-FORCE\" :gilt.git))) (not (null (and s (fboundp s))))))" \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$PUSH_F" = "T" ]; then
+    pass "git-push-force: function exists"
+else
+    fail "git-push-force: function not found"
+fi
+
+# Test: git-clone (just check function exists, don't actually clone)
+CLONE_FN=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval "(format t \"~A\" (let ((s (find-symbol \"GIT-CLONE\" :gilt.git))) (not (null (and s (fboundp s))))))" \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$CLONE_FN" = "T" ]; then
+    pass "git-clone: function exists"
+else
+    fail "git-clone: function not found"
+fi
+
+# Test: git-init (just check function exists)
+INIT_FN=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval "(format t \"~A\" (let ((s (find-symbol \"GIT-INIT\" :gilt.git))) (not (null (and s (fboundp s))))))" \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$INIT_FN" = "T" ]; then
+    pass "git-init: function exists"
+else
+    fail "git-init: function not found"
+fi
+
+# Test: load-keybindings (just check function exists)
+KEYBIND_FN=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval "(format t \"~A\" (let ((s (find-symbol \"LOAD-KEYBINDINGS\" :gilt.git))) (not (null (and s (fboundp s))))))" \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$KEYBIND_FN" = "T" ]; then
+    pass "load-keybindings: function exists"
+else
+    fail "load-keybindings: function not found"
+fi
+
+# Test: git-cherry-pick (just check function exists)
+CP_FN=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval "(format t \"~A\" (let ((s (find-symbol \"GIT-CHERRY-PICK\" :gilt.git))) (not (null (and s (fboundp s))))))" \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$CP_FN" = "T" ]; then
+    pass "git-cherry-pick: function exists"
+else
+    fail "git-cherry-pick: function not found"
+fi
+
+# Test: fuzzy-match-p (used by diff search and filtering)
+FUZZY=$(cd "$REPO_DIR" && sbcl --noinform --non-interactive \
+    --eval "$SBCL_INIT" \
+    --eval '(ql:quickload :gilt :silent t)' \
+    --eval '(format t "~A" (gilt.views::fuzzy-match-p "abc" "aXbYcZ"))' \
+    --eval '(quit)' 2>&1 | tail -1)
+if [ "$FUZZY" = "T" ]; then
+    pass "fuzzy-match-p: correctly matches 'abc' in 'aXbYcZ'"
+else
+    fail "fuzzy-match-p: expected T, got '$FUZZY'"
+fi
+
 # ─── 9. v0.19.0 Feature Tests ────────────────────────────────────
 section "9. v0.19.0 Features"
 
