@@ -2578,6 +2578,39 @@ Returns nested alist: ((context . ((key . action) ...)) ...)."
           (when global-entry
             (cdr (assoc key-char (cdr global-entry))))))))
 
+;;; Commit message templates
+
+(defun commit-templates-file ()
+  "Path to the commit templates config file."
+  (merge-pathnames "commit-templates.conf" (gilt-config-dir)))
+
+(defun load-commit-templates ()
+  "Load commit message templates from config file.
+   Format: pattern=prefix per line.
+   Pattern is matched against branch name (substring match).
+   Returns alist of (pattern . prefix)."
+  (let ((file (commit-templates-file)))
+    (if (probe-file file)
+        (with-open-file (s file :direction :input)
+          (loop for line = (read-line s nil nil)
+                while line
+                for trimmed = (string-trim '(#\Space #\Tab) line)
+                when (and (> (length trimmed) 0)
+                          (char/= (char trimmed 0) #\#)
+                          (position #\= trimmed))
+                  collect (let ((pos (position #\= trimmed)))
+                            (cons (string-trim '(#\Space #\Tab) (subseq trimmed 0 pos))
+                                  (string-trim '(#\Space #\Tab) (subseq trimmed (1+ pos)))))))
+        nil)))
+
+(defun get-commit-template (branch)
+  "Get the commit message prefix for a branch, based on templates config.
+   Returns the prefix string or nil if no template matches."
+  (let ((templates (load-commit-templates)))
+    (loop for (pattern . prefix) in templates
+          when (search pattern branch)
+            do (return prefix))))
+
 ;;; Custom patch building
 
 (defun git-diff-lines (file)

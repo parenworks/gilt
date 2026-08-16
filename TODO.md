@@ -110,7 +110,7 @@
   - Why it matters: Lazygit supports bulk branch deletion.
   - Effort: Small-Medium — multi-select + batch operations.
 
-- [ ] **19. Commit Message Templates / Prefixes**
+- [x] **19. Commit Message Templates / Prefixes**
   - What: Predefined commit message prefixes (e.g., `feat:`, `fix:`) configurable per branch pattern.
   - Why it matters: Lazygit has this. Useful for conventional commits.
   - Effort: Small — config + dialog enhancement.

@@ -4153,11 +4153,16 @@
        nil)
       ;; Commit - 'c' opens commit dialog (multiline)
       ((and (key-event-char key) (char= (key-event-char key) #\c))
-       (setf (active-dialog view)
-             (make-dialog :title "Commit Message"
-                          :input-mode t
-                          :multiline t
-                          :buttons '("Commit" "Cancel")))
+       (let ((template (get-commit-template (or (current-branch view) ""))))
+         (setf (active-dialog view)
+               (make-dialog :title "Commit Message"
+                            :message (if template
+                                         (format nil "Template prefix: ~A" template)
+                                         "Enter commit message:")
+                            :input-mode t
+                            :multiline t
+                            :input-buffer template
+                            :buttons '("Commit" "Cancel"))))
        nil)
       ;; Commit with editor - 'C' (capital, when on files panel)
       ((and (key-event-char key) (char= (key-event-char key) #\C)

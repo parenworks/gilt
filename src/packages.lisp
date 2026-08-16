@@ -367,6 +367,9 @@
            #:keybindings-file
            #:load-keybindings
            #:lookup-keybinding
+           #:commit-templates-file
+           #:load-commit-templates
+           #:get-commit-template
            #:git-diff-lines
            #:git-apply-patch
            #:parse-commit-hunks

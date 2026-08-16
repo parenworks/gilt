@@ -97,6 +97,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Space` on branches panel toggles branch selection (shown with `+` marker)
   - `D` deletes all selected branches at once with confirmation dialog
   - Toast shows count of selected branches
+- **Commit message templates** — Configurable prefixes per branch pattern
+  - `~/.config/gilt/commit-templates.conf` with `pattern=prefix` format
+  - Pattern matched against branch name (substring match)
+  - Prefix pre-filled in commit dialog when on matching branch
+  - `load-commit-templates` and `get-commit-template` data layer functions
+  - Example config at `commit-templates.example.conf`
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context
