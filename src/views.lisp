@@ -1487,6 +1487,7 @@
                        "   K (files)    git clean - dry-run preview and confirm"
                        "   F (commits)  Format patch for selected commit"
                        "   A (files)    Apply patch (git apply / git am)"
+                       "   M (files)    Detect and resolve submodule conflicts"
                        ""
                        " FILES (panel 2)"
                        "   Space      Stage/unstage file"
@@ -2024,6 +2025,22 @@
                   (log-command view (format nil "git revert ~A" hash))
                   (git-revert hash)
                   (refresh-data view))))
+             ;; Submodule Conflicts dialog
+             ((string= (dialog-title dlg) "Submodule Conflicts")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-button (nth (dialog-selected-button dlg) buttons))
+                     (conflicts (git-submodule-conflicts)))
+                (cond
+                  ((string= selected-button "Resolve (ours)")
+                   (dolist (path conflicts)
+                     (git-submodule-resolve path :strategy :ours))
+                   (show-toast view (format nil "Resolved ~D conflict~:P (ours)" (length conflicts)))
+                   (refresh-data view))
+                  ((string= selected-button "Resolve (theirs)")
+                   (dolist (path conflicts)
+                     (git-submodule-resolve path :strategy :theirs))
+                   (show-toast view (format nil "Resolved ~D conflict~:P (theirs)" (length conflicts)))
+                   (refresh-data view)))))
              ;; Apply Patch dialog
              ((string= (dialog-title dlg) "Apply Patch")
               (let* ((buttons (dialog-buttons dlg))
@@ -5127,6 +5144,18 @@
                    (make-dialog :title "Amend Commit"
                                 :message "Amend HEAD with staged changes?"
                                 :buttons '("Amend" "Amend with new message" "Cancel"))))))
+       nil)
+      ;; Submodule conflict resolution - 'M' (capital, when on files panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\M)
+            (= focused-idx 1))
+       (let ((conflicts (git-submodule-conflicts)))
+         (if conflicts
+             (setf (active-dialog view)
+                   (make-dialog :title "Submodule Conflicts"
+                                :message (format nil "~D conflict~:P found:~%~{  ~A~^~%~}"
+                                                 (length conflicts) conflicts)
+                                :buttons '("Resolve (ours)" "Resolve (theirs)" "Cancel")))
+             (show-toast view "No submodule conflicts")))
        nil)
       ;; Format-patch - 'F' (capital, when on commits panel)
       ((and (key-event-char key) (char= (key-event-char key) #\F)

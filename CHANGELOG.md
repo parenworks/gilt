@@ -126,6 +126,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `git-format-patch`, `git-format-patch-single`, `git-apply-patch-file`, `git-am-patch` data layer functions
 - **Makefile fix** — `make install` no longer rebuilds under sudo
   - `install` target checks for existing binary instead of depending on build target
+- **Submodule conflict resolution** — Conflict detection + resolution UI
+  - `M` on files panel detects submodule conflicts
+  - Dialog offers resolve with ours or theirs strategy
+  - `git-submodule-conflicts` and `git-submodule-resolve` data layer functions
 - **Comprehensive worktree management** — Full lazygit-parity worktree features:
   - **Switch to worktree** (`Enter` in worktrees view) — switches the entire gilt session into the worktree's directory, reloading all panels
   - **Leave worktree** (`Esc`) — returns to the parent repository context

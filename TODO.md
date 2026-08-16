@@ -135,7 +135,7 @@
   - Why it matters: Magit supports this. Essential for email-based workflows (kernel, etc.).
   - Effort: Small — `git format-patch` + `git am` wrappers.
 
-- [ ] **24. Submodule Conflict Resolution**
+- [x] **24. Submodule Conflict Resolution**
   - What: Dedicated UI for resolving submodule conflicts (view ours/theirs commits, choose).
   - Why it matters: Lazygit has specialized submodule conflict handling.
   - Effort: Medium — submodule conflict detection + resolution UI.

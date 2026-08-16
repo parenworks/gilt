@@ -1746,6 +1746,32 @@
   "Deinitialize a submodule"
   (git-run "submodule" "deinit" "-f" path))
 
+(defun git-submodule-conflicts ()
+  "Detect submodules with merge conflicts. Returns list of submodule paths
+   that have conflicts (unmerged entries)."
+  (let ((lines (git-run-lines "status" "--porcelain" "-u")))
+    (loop for line in lines
+          when (and (>= (length line) 3)
+                    (or (and (char= (char line 0) #\U) (char= (char line 1) #\U))
+                        (and (char= (char line 0) #\A) (char= (char line 1) #\A))
+                        (and (char= (char line 0) #\D) (char= (char line 1) #\D))))
+          collect (subseq line 3))))
+
+(defun git-submodule-resolve (path &key (strategy :ours))
+  "Resolve a submodule conflict using the specified strategy.
+   :OURS - take our version
+   :THEIRS - take their version
+   :MERGE - attempt merge (requires manual resolution)"
+  (case strategy
+    (:ours
+     (git-run "checkout" "--ours" "--" path)
+     (git-run "add" path))
+    (:theirs
+     (git-run "checkout" "--theirs" "--" path)
+     (git-run "add" path))
+    (:merge
+     (git-run "merge" "--continue"))))
+
 ;;; Repo info
 
 (defun git-repo-root ()

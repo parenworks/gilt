@@ -407,6 +407,8 @@
            #:git-submodule-sync
            #:git-submodule-add
            #:git-submodule-deinit
+           #:git-submodule-conflicts
+           #:git-submodule-resolve
            #:git-ahead-behind
            #:git-config-list
            #:git-config-get
