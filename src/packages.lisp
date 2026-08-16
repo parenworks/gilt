@@ -239,6 +239,7 @@
            #:git-merge-in-progress-p
            #:git-mark-resolved
            #:git-edit-file
+           #:git-open-in-editor
            #:git-resolve-with-ours
            #:git-resolve-with-theirs
            #:git-delete-branch
@@ -288,6 +289,40 @@
            #:git-commit-no-verify
            #:git-undo
            #:git-redo
+           #:reflog-entry
+           #:reflog-hash
+           #:reflog-short-hash
+           #:reflog-ref
+           #:reflog-message
+           #:reflog-selector
+           #:make-reflog-entry
+           #:git-reflog
+           #:git-reflog-diff
+           #:git-reflog-show
+           #:grep-result
+           #:grep-result-file
+           #:grep-result-line
+           #:grep-result-content
+           #:make-grep-result
+           #:git-grep
+           #:git-show-file
+           #:tree-entry
+           #:tree-entry-mode
+           #:tree-entry-type
+           #:tree-entry-hash
+           #:tree-entry-name
+           #:tree-entry-path
+           #:make-tree-entry
+           #:git-ls-tree
+           #:trace-entry
+           #:trace-commit-hash
+           #:trace-short-hash
+           #:trace-author
+           #:trace-date
+           #:trace-message
+           #:trace-diff
+           #:make-trace-entry
+           #:git-log-line-range
            #:git-checkout-tag
            #:git-rename-stash
            #:git-set-upstream
@@ -367,10 +402,30 @@
            #:git-worktree-list
            #:git-worktree-add
            #:git-worktree-add-new-branch
+           #:git-worktree-add-detached
+           #:git-worktree-add-from-ref
            #:git-worktree-remove
+           #:git-worktree-move
            #:git-worktree-lock
            #:git-worktree-unlock
            #:git-worktree-prune
+           #:git-worktree-repair
+           #:git-worktree-candidate-paths
+           #:gilt-worktree-default-path
+           #:gilt-worktree-config-file
+           #:git-fast-forward-in-worktree
+           #:git-upstream-remote
+           #:git-upstream-branch
+           #:git-run-in-dir
+           #:expand-tilde-path
+           #:git-worktree-remove-and-delete-branch
+           #:git-worktree-detach
+           #:git-worktree-detect-branch
+           #:git-worktree-current-path
+           #:git-branch-exists-p
+           #:git-branch-in-worktree-p
+           #:enter-worktree
+           #:leave-worktree
            #:worktree-entry
            #:worktree-path
            #:worktree-head
@@ -378,12 +433,19 @@
            #:worktree-bare
            #:worktree-detached
            #:worktree-locked
+           #:worktree-locked-reason
            #:worktree-prunable
+           #:worktree-current
+           #:worktree-main
+           #:worktree-missing
+           #:worktree-name
            #:make-worktree-entry
            #:git-repo-root
            #:git-repo-name
            #:git-commit-message
            #:git-blame
+           #:git-blame-at
+           #:git-blame-parent
            #:blame-line
            #:blame-line-hash
            #:blame-line-short-hash

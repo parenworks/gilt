@@ -92,6 +92,14 @@
 
 (defvar *parent-repo-stack* nil "Stack of parent repos for submodule navigation")
 
+(defparameter *rename-threshold* nil
+  "Git rename detection threshold (0-100). nil means use git default.")
+
+(defun rename-threshold-arg ()
+  "Return the -M<threshold> argument string if threshold is set, or nil."
+  (when *rename-threshold*
+    (format nil "-M~D%" *rename-threshold*)))
+
 (defun enter-submodule (submodule-path)
   "Enter a submodule by changing *current-repo* to point to it. Pushes current repo onto stack."
   (let* ((repo (ensure-repo))
@@ -212,7 +220,7 @@
 
 ;;; Diff
 
-(defun git-diff (&optional file &key (context-size 3) ignore-whitespace)
+(defun git-diff (&key (file nil) (context-size 3) ignore-whitespace)
   "Get unstaged diff, optionally for specific file"
   (let ((args (list "diff" "--color=always"
                     (format nil "-U~D" context-size))))
@@ -222,7 +230,7 @@
         (apply #'git-run (append args (list "--" file)))
         (apply #'git-run args))))
 
-(defun git-diff-staged (&optional file &key (context-size 3) ignore-whitespace)
+(defun git-diff-staged (&key (file nil) (context-size 3) ignore-whitespace)
   "Get staged diff, optionally for specific file"
   (let ((args (list "diff" "--cached" "--color=always"
                     (format nil "-U~D" context-size))))
@@ -681,6 +689,132 @@
                    result))))
         (nreverse result)))))
 
+(defun git-blame-at (file &key ref (detect-copies nil))
+  "Get blame information for a file at a specific ref.
+   DETECT-COPIES enables -C flag to detect code moved from other files.
+   Returns list of blame-line objects."
+  (let ((args (append (list "blame" "--porcelain")
+                      (when detect-copies (list "-C"))
+                      (when ref (list ref))
+                      (list file))))
+    (let ((lines (apply #'git-run-lines args)))
+      (when lines
+        (let ((result nil)
+              (current-hash nil)
+              (current-author nil)
+              (current-date nil)
+              (line-num 0))
+          (dolist (line lines)
+            (cond
+              ((and (>= (length line) 40)
+                    (every (lambda (c) (or (digit-char-p c 16))) (subseq line 0 40)))
+               (setf current-hash (subseq line 0 40))
+               (incf line-num))
+              ((and (> (length line) 7)
+                    (string= (subseq line 0 7) "author "))
+               (setf current-author (subseq line 7)))
+              ((and (> (length line) 12)
+                    (string= (subseq line 0 12) "author-time "))
+               (let ((timestamp (parse-integer (subseq line 12) :junk-allowed t)))
+                 (when timestamp
+                   (setf current-date (format-relative-time timestamp)))))
+              ((and (> (length line) 0)
+                    (char= (char line 0) #\Tab))
+               (push (make-blame-line
+                      :hash current-hash
+                      :short-hash (if current-hash (subseq current-hash 0 (min 7 (length current-hash))) "")
+                      :author (or current-author "")
+                      :date (or current-date "")
+                      :line-num line-num
+                      :content (subseq line 1))
+                     result))))
+          (nreverse result))))))
+
+(defun git-blame-parent (file hash)
+  "Get blame for a file at the parent of the given commit.
+   Useful for navigating blame history backwards."
+  (let ((parent (git-run "rev-parse" (format nil "~A^" hash))))
+    (when (and parent (> (length (string-trim '(#\Space #\Newline) parent)) 0))
+      (git-blame-at file :ref (string-trim '(#\Space #\Newline) parent)))))
+
+;;; Line range tracing (git log -L)
+
+(defclass trace-entry ()
+  ((commit-hash :initarg :commit-hash :accessor trace-commit-hash :initform nil)
+   (short-hash :initarg :short-hash :accessor trace-short-hash :initform nil)
+   (author :initarg :author :accessor trace-author :initform nil)
+   (date :initarg :date :accessor trace-date :initform nil)
+   (message :initarg :message :accessor trace-message :initform nil)
+   (old-start :initarg :old-start :accessor trace-old-start :initform nil)
+   (old-end :initarg :old-end :accessor trace-old-end :initform nil)
+   (new-start :initarg :new-start :accessor trace-new-start :initform nil)
+   (new-end :initarg :new-end :accessor trace-new-end :initform nil)
+   (diff :initarg :diff :accessor trace-diff :initform nil))
+  (:documentation "Represents a line-range trace entry from git log -L"))
+
+(defun make-trace-entry (&key commit-hash short-hash author date message
+                         old-start old-end new-start new-end diff)
+  (make-instance 'trace-entry
+                 :commit-hash commit-hash :short-hash short-hash
+                 :author author :date date :message message
+                 :old-start old-start :old-end old-end
+                 :new-start new-start :new-end new-end :diff diff))
+
+(defun git-log-line-range (file start-line end-line &key (limit 50))
+  "Trace the history of a line range in a file using git log -L.
+   Returns a list of trace-entry objects."
+  (let* ((range-spec (format nil "~D,~D:~A" start-line end-line file))
+         (output (git-run "log" "-L" range-spec
+                          "--format=format:COMMIT %H %h %an %ad %s"
+                          "--date=short"
+                          (format nil "-~D" limit))))
+    (when (and output (> (length output) 0))
+      (let ((entries nil)
+            (lines (cl-ppcre:split "\\n" output))
+            (current-hash nil)
+            (current-short nil)
+            (current-author nil)
+            (current-date nil)
+            (current-message nil)
+            (diff-lines nil))
+        (dolist (line lines)
+          (cond
+            ;; Commit header line
+            ((and (> (length line) 7) (string= (subseq line 0 7) "COMMIT "))
+             ;; Save previous entry if any
+             (when current-hash
+               (push (make-trace-entry :commit-hash current-hash
+                                       :short-hash current-short
+                                       :author current-author
+                                       :date current-date
+                                       :message current-message
+                                       :diff (nreverse diff-lines))
+                     entries))
+             ;; Parse new commit header
+             (let ((parts (cl-ppcre:split " " line :limit 6)))
+               (setf current-hash (second parts))
+               (setf current-short (third parts))
+               (setf current-author (fourth parts))
+               (setf current-date (fifth parts))
+               (setf current-message (if (> (length parts) 5) (sixth parts) ""))
+               (setf diff-lines nil)))
+            ;; Diff line (starts with +, -, @, or space)
+            ((or (and (> (length line) 0)
+                      (member (char line 0) '(#\+ #\- #\@ #\Space)))
+                 (string= line ""))
+             (when current-hash
+               (push line diff-lines)))))
+        ;; Save last entry
+        (when current-hash
+          (push (make-trace-entry :commit-hash current-hash
+                                  :short-hash current-short
+                                  :author current-author
+                                  :date current-date
+                                  :message current-message
+                                  :diff (nreverse diff-lines))
+                entries))
+        (nreverse entries)))))
+
 (defun format-relative-time (unix-timestamp)
   "Format a Unix timestamp as relative time (e.g., '2 days ago')"
   (let* ((now (get-universal-time))
@@ -1044,10 +1178,22 @@
   "Mark a conflicted file as resolved by staging it"
   (git-run "add" file))
 
-(defun git-edit-file (file)
-  "Open a file in the user's preferred editor ($EDITOR or vi)"
+(defun git-edit-file (file &optional line)
+  "Open a file in the user's preferred editor ($EDITOR or vi).
+   If LINE is given, pass +LINE to the editor (vim/nvim style)."
   (let ((editor (or (uiop:getenv "EDITOR") "vi")))
-    (uiop:run-program (list editor file)
+    (uiop:run-program (if line
+                          (list editor (format nil "+~D" line) file)
+                          (list editor file))
+                      :input :interactive
+                      :output :interactive
+                      :error-output :interactive)))
+
+(defun git-open-in-editor (path)
+  "Open a directory or file in the user's preferred editor ($EDITOR or vi).
+   Many editors (vim, code, etc.) accept a directory to open a file browser."
+  (let ((editor (or (uiop:getenv "EDITOR") "vi")))
+    (uiop:run-program (list editor path)
                       :input :interactive
                       :output :interactive
                       :error-output :interactive)))
@@ -1098,6 +1244,128 @@
                       (newer-msg (subseq newer-line (1+ newer-space))))
                  (git-run "reset" "--hard" newer-hash)
                  (return newer-msg)))))
+
+;;; Reflog
+
+(defclass reflog-entry ()
+  ((hash :initarg :hash :accessor reflog-hash :initform nil)
+   (short-hash :initarg :short-hash :accessor reflog-short-hash :initform nil)
+   (ref :initarg :ref :accessor reflog-ref :initform nil)
+   (message :initarg :message :accessor reflog-message :initform nil)
+   (selector :initarg :selector :accessor reflog-selector :initform nil))
+  (:documentation "Represents a git reflog entry"))
+
+(defun make-reflog-entry (&key hash short-hash ref message selector)
+  (make-instance 'reflog-entry :hash hash :short-hash short-hash
+                 :ref ref :message message :selector selector))
+
+(defun git-reflog (&key (limit 100))
+  "Return a list of reflog-entry objects.
+   Uses --format to get hash, selector, and message in a parseable format."
+  (let ((output (git-run "reflog" "--format=%H%x09%gd%x09%gs"
+                         (format nil "-n ~D" limit))))
+    (when (and output (> (length output) 0))
+      (loop for line in (cl-ppcre:split "\\n" output)
+            when (> (length (string-trim '(#\Space #\Tab) line)) 0)
+              collect (let* ((parts (cl-ppcre:split "\\t" line))
+                             (hash (first parts))
+                             (selector (second parts))
+                             (message (or (third parts) ""))
+                             (short-hash (when hash (subseq hash 0 (min 8 (length hash))))))
+                        (make-reflog-entry :hash hash :short-hash short-hash
+                                           :ref selector :message message
+                                           :selector selector))))))
+
+(defun git-reflog-diff (selector)
+  "Show the diff for a reflog entry identified by its selector (e.g. HEAD@{3})."
+  (git-run "diff" selector))
+
+(defun git-reflog-show (selector)
+  "Show the commit details for a reflog entry."
+  (git-run "show" "--stat" "--patch" selector))
+
+;;; Grep
+
+(defclass grep-result ()
+  ((file :initarg :file :accessor grep-result-file :initform nil)
+   (line :initarg :line :accessor grep-result-line :initform nil)
+   (content :initarg :content :accessor grep-result-content :initform nil))
+  (:documentation "Represents a single git grep match"))
+
+(defun make-grep-result (&key file line content)
+  (make-instance 'grep-result :file file :line line :content content))
+
+(defun git-grep (pattern &key (ref nil) (ignore-case nil) (line-numbers t))
+  "Run git grep and return a list of grep-result objects.
+   PATTERN is the search string (regex).
+   REF, if given, searches at that revision instead of the working tree.
+   IGNORE-CASE adds -i flag.
+   LINE-NUMBERS adds -n flag (default true)."
+  (when (or (null pattern) (= (length (string-trim '(#\Space) pattern)) 0))
+    (return-from git-grep nil))
+  (let* ((args '("grep" "--no-color"))
+         (args (if line-numbers (append args '("-n")) args))
+         (args (if ignore-case (append args '("-i")) args))
+         (args (if ref (append args (list ref "--")) (append args '("--"))))
+         (args (append args (list pattern)))
+         (output (apply #'git-run args)))
+    (when (and output (> (length output) 0))
+      (loop for line in (cl-ppcre:split "\\n" output)
+            when (> (length (string-trim '(#\Space #\Tab) line)) 0)
+              collect (let* ((parts (cl-ppcre:split ":" line :limit 3))
+                             (file (first parts))
+                             (line-num (when (second parts)
+                                         (parse-integer (second parts) :junk-allowed t)))
+                             (content (or (third parts) "")))
+                        (make-grep-result :file file :line line-num :content content))))))
+
+(defun git-show-file (ref path)
+  "Show the content of a file at a given ref (commit/branch/tag).
+   Returns the raw file content as a string."
+  (git-run "show" (format nil "~A:~A" ref path)))
+
+;;; Tree/Blob browsing
+
+(defclass tree-entry ()
+  ((mode :initarg :mode :accessor tree-entry-mode :initform nil)
+   (type :initarg :type :accessor tree-entry-type :initform nil)  ; :blob, :tree, :commit
+   (hash :initarg :hash :accessor tree-entry-hash :initform nil)
+   (name :initarg :name :accessor tree-entry-name :initform nil)
+   (path :initarg :path :accessor tree-entry-path :initform nil))  ; full path from tree root
+  (:documentation "Represents a git tree entry (file or directory)"))
+
+(defun make-tree-entry (&key mode type hash name path)
+  (make-instance 'tree-entry :mode mode :type type :hash hash :name name :path path))
+
+(defun git-ls-tree (ref &optional (path ""))
+  "List the contents of a tree at REF, optionally in a subdirectory PATH.
+   Returns a list of tree-entry objects."
+  (let ((tree-spec (if (or (null path) (string= path ""))
+                       ref
+                       (format nil "~A:~A" ref path))))
+    (let ((output (git-run "ls-tree" tree-spec)))
+      (when (and output (> (length output) 0))
+        (loop for line in (cl-ppcre:split "\\n" output)
+              when (> (length (string-trim '(#\Space #\Tab) line)) 0)
+                collect (let* ((parts (cl-ppcre:split "\\t" line :limit 2))
+                               (meta (first parts))
+                               (name (or (second parts) ""))
+                               (meta-parts (cl-ppcre:split "\\s+" meta))
+                               (mode (first meta-parts))
+                               (type (second meta-parts))
+                               (hash (third meta-parts))
+                               (full-path (if (or (null path) (string= path ""))
+                                              name
+                                              (format nil "~A/~A" path name))))
+                          (make-tree-entry :mode mode
+                                           :type (cond
+                                                   ((string= type "blob") :blob)
+                                                   ((string= type "tree") :tree)
+                                                   ((string= type "commit") :commit)
+                                                   (t nil))
+                                           :hash hash
+                                           :name name
+                                           :path full-path)))))))
 
 (defun git-checkout-tag (tag-name)
   "Checkout a tag as detached HEAD."
@@ -1424,18 +1692,86 @@
    (bare :initarg :bare :accessor worktree-bare :initform nil)
    (detached :initarg :detached :accessor worktree-detached :initform nil)
    (locked :initarg :locked :accessor worktree-locked :initform nil)
-   (prunable :initarg :prunable :accessor worktree-prunable :initform nil))
+   (locked-reason :initarg :locked-reason :accessor worktree-locked-reason :initform nil)
+   (prunable :initarg :prunable :accessor worktree-prunable :initform nil)
+   ;; Derived fields (populated by git-worktree-list, not by porcelain output)
+   (current :initarg :current :accessor worktree-current :initform nil
+            :documentation "T if this is the worktree gilt is currently operating in")
+   (main :initarg :main :accessor worktree-main :initform nil
+         :documentation "T if this is the main worktree (first listed by git)")
+   (missing :initarg :missing :accessor worktree-missing :initform nil
+            :documentation "T if the worktree's directory no longer exists on disk")
+   (name :initarg :name :accessor worktree-name :initform nil
+         :documentation "Short uniquified name derived from the path"))
   (:documentation "Represents a git worktree"))
 
-(defun make-worktree-entry (&key path head branch bare detached locked prunable)
+(defun make-worktree-entry (&key path head branch bare detached locked prunable
+                             locked-reason current main missing name)
   (make-instance 'worktree-entry :path path :head head :branch branch
-                 :bare bare :detached detached :locked locked :prunable prunable))
+                 :bare bare :detached detached :locked locked
+                 :locked-reason locked-reason :prunable prunable
+                 :current current :main main :missing missing :name name))
+
+(defun normalize-path (path)
+  "Normalize a filesystem path for comparison: expand, strip trailing slashes."
+  (let* ((trimmed (string-trim '(#\Newline #\Space #\Tab) path))
+         (no-slash (string-right-trim '(#\/) trimmed)))
+    (if (string= no-slash "") "/" no-slash)))
+
+(defun worktree-dir-exists-p (path)
+  "Return T if PATH is an existing directory."
+  (let ((p (string-right-trim '(#\/) (string-trim '(#\Newline #\Space) path))))
+    (when (and (> (length p) 0)
+               (handler-case (probe-file (concatenate 'string p "/"))
+                 (error () nil)))
+      t)))
+
+(defun worktree-basename (path)
+  "Return the final path component of PATH."
+  (let ((norm (normalize-path path)))
+    (car (last (cl-ppcre:split "/" norm)))))
+
+(defun assign-worktree-names (worktrees)
+  "Assign short uniquified names to each worktree based on path basenames.
+   If basenames collide, disambiguate by prepending successive parent dirs."
+  (let ((basenames (mapcar #'(lambda (wt)
+                               (worktree-basename (worktree-path wt)))
+                           worktrees)))
+    (loop for wt in worktrees
+          for basename in basenames
+          for i from 0
+          ;; Count how many worktrees share this basename
+          for dup-count = (count basename basenames :test #'string=)
+          do (setf (worktree-name wt)
+                   (if (or (worktree-bare wt) (<= dup-count 1))
+                       basename
+                       ;; Disambiguate: prepend parent dir basename
+                       (let* ((norm (normalize-path (worktree-path wt)))
+                              (parts (cl-ppcre:split "/" norm))
+                              (parent (when (>= (length parts) 2)
+                                        (nth (- (length parts) 2) parts))))
+                         (if parent
+                             (concatenate 'string parent "/" basename)
+                             basename)))))
+    worktrees))
+
+(defun git-worktree-current-path ()
+  "Return the normalized toplevel path of the current working tree, or nil
+   (e.g. inside a bare repo)."
+  (ignore-errors
+    (let ((top (string-trim '(#\Newline #\Space)
+                            (git-run "rev-parse" "--show-toplevel"))))
+      (when (and top (> (length top) 0))
+        (normalize-path top)))))
 
 (defun git-worktree-list ()
-  "Get list of worktree-entry objects."
-  (let ((lines (git-run-lines "worktree" "list" "--porcelain")))
+  "Get list of worktree-entry objects with derived fields populated:
+   current, main, missing, name, locked-reason."
+  (let ((lines (git-run-lines "worktree" "list" "--porcelain"))
+        (current-toplevel (git-worktree-current-path)))
     (let ((worktrees nil)
-          (current nil))
+          (current nil)
+          (idx 0))
       (dolist (line lines)
         (cond
           ((string= line "")
@@ -1443,7 +1779,11 @@
              (push current worktrees)
              (setf current nil)))
           ((cl-ppcre:scan "^worktree " line)
-           (setf current (make-worktree-entry :path (subseq line 9))))
+           (setf current (make-worktree-entry :path (subseq line 9)))
+           ;; First listed worktree is the main worktree
+           (when (= idx 0)
+             (setf (worktree-main current) t))
+           (incf idx))
           ((cl-ppcre:scan "^HEAD " line)
            (when current
              (setf (worktree-head current) (subseq line 5))))
@@ -1459,12 +1799,64 @@
           ((string= line "detached")
            (when current (setf (worktree-detached current) t)))
           ((cl-ppcre:scan "^locked" line)
-           (when current (setf (worktree-locked current) t)))
+           (when current
+             (setf (worktree-locked current) t)
+             ;; "locked <reason>" or just "locked"
+             (when (> (length line) 6)
+               (setf (worktree-locked-reason current) (subseq line 7)))))
           ((cl-ppcre:scan "^prunable" line)
            (when current (setf (worktree-prunable current) t)))))
       (when current
         (push current worktrees))
-      (nreverse worktrees))))
+      (setf worktrees (nreverse worktrees))
+      ;; Populate derived fields
+      (dolist (wt worktrees)
+        ;; Current worktree detection
+        (when (and current-toplevel
+                   (string= (normalize-path (worktree-path wt)) current-toplevel))
+          (setf (worktree-current wt) t))
+        ;; Missing-path detection (only for non-bare worktrees)
+        (unless (worktree-bare wt)
+          (unless (worktree-dir-exists-p (worktree-path wt))
+            (setf (worktree-missing wt) t))))
+      ;; Detect branch during rebase/bisect when git doesn't report it
+      (dolist (wt worktrees)
+        (when (and (not (worktree-branch wt))
+                   (not (worktree-detached wt))
+                   (not (worktree-bare wt))
+                   (not (worktree-missing wt)))
+          (let ((detected (git-worktree-detect-branch wt)))
+            (when detected
+              (setf (worktree-branch wt) detected)))))
+      (assign-worktree-names worktrees)
+      worktrees)))
+
+(defun git-worktree-detect-branch (wt)
+  "Try to detect the branch name for a worktree that didn't report one
+   (e.g. during rebase/bisect). Reads rebase-merge/head-name or BISECT_START
+   from the worktree's private git dir. Returns branch name or nil."
+  (ignore-errors
+    (let* ((wt-path (worktree-path wt))
+           ;; The worktree's private git dir: <common-dir>/worktrees/<basename>/
+           (common-dir (string-trim '(#\Newline #\Space)
+                                    (git-run "rev-parse" "--git-common-dir")))
+           (wt-gitdir (concatenate 'string
+                                   (string-right-trim '(#\/) common-dir)
+                                   "/worktrees/"
+                                   (worktree-basename wt-path)
+                                   "/")))
+      (flet ((read-file (p)
+               (when (probe-file p)
+                 (string-trim '(#\Newline #\Space)
+                              (with-open-file (f p :direction :input)
+                                (read-line f nil ""))))))
+        (or
+         ;; rebase-merge/head-name contains "refs/heads/<branch>"
+         (let ((head-name (read-file (concatenate 'string wt-gitdir "rebase-merge/head-name"))))
+           (when (and head-name (cl-ppcre:scan "^refs/heads/" head-name))
+             (subseq head-name 11)))
+         ;; BISECT_START contains the branch name directly
+         (read-file (concatenate 'string wt-gitdir "BISECT_START")))))))
 
 (defun git-worktree-add (path &optional branch)
   "Add a new worktree at PATH for BRANCH. If BRANCH is nil, creates detached HEAD."
@@ -1478,11 +1870,32 @@
       (git-run "worktree" "add" "-b" new-branch path start-point)
       (git-run "worktree" "add" "-b" new-branch path)))
 
+(defun git-worktree-add-detached (path ref)
+  "Add a new worktree at PATH with detached HEAD at REF (commit/tag/branch)."
+  (git-run "worktree" "add" "--detach" path ref))
+
+(defun git-worktree-add-from-ref (path ref &key new-branch)
+  "Add a new worktree at PATH from REF (branch/commit/tag).
+   If NEW-BRANCH is given, create a new branch named NEW-BRANCH at REF.
+   Otherwise check out REF in the worktree (REF must be a branch) or detach."
+  (cond
+    (new-branch
+     (git-run "worktree" "add" "-b" new-branch path ref))
+    ((git-branch-exists-p ref)
+     (git-run "worktree" "add" path ref))
+    (t
+     ;; Not a local branch (commit/tag/remote) -> detached
+     (git-run "worktree" "add" "--detach" path ref))))
+
 (defun git-worktree-remove (path &optional force)
   "Remove a worktree at PATH."
   (if force
       (git-run "worktree" "remove" "--force" path)
       (git-run "worktree" "remove" path)))
+
+(defun git-worktree-move (path new-path)
+  "Move a worktree from PATH to NEW-PATH."
+  (git-run "worktree" "move" path new-path))
 
 (defun git-worktree-lock (path &optional reason)
   "Lock a worktree to prevent pruning."
@@ -1497,6 +1910,187 @@
 (defun git-worktree-prune ()
   "Prune stale worktree information."
   (git-run "worktree" "prune"))
+
+(defun git-branch-exists-p (branch)
+  "Return T if BRANCH exists as a local branch."
+  (let ((output (ignore-errors
+                  (git-run "rev-parse" "--verify"
+                           (concatenate 'string "refs/heads/" branch)))))
+    (and output (> (length (string-trim '(#\Newline #\Space) output)) 0))))
+
+(defun git-branch-in-worktree-p (branch)
+  "Return the path of the worktree that has BRANCH checked out, or nil.
+   A branch can only be checked out in one worktree at a time."
+  (dolist (wt (git-worktree-list))
+    (when (and (worktree-branch wt)
+               (string= (worktree-branch wt) branch)
+               (not (worktree-missing wt)))
+      (return (worktree-path wt)))))
+
+(defun git-worktree-detach (path)
+  "Detach the HEAD of the worktree at PATH so its branch can be deleted
+   or checked out elsewhere. Runs git checkout --detach in that worktree."
+  (with-output-to-string (s)
+    (sb-ext:run-program "/usr/bin/git" '("checkout" "--detach")
+                        :output s :error nil :search t
+                        :directory (pathname (concatenate 'string
+                                                          (string-right-trim '(#\/) path)
+                                                          "/")))))
+
+(defun git-worktree-remove-and-delete-branch (path branch
+                                               &key delete-remote force)
+  "Remove the worktree at PATH and delete its BRANCH.
+   If DELETE-REMOTE is T, also delete the remote tracking branch.
+   If FORCE is T, force-remove the worktree."
+  ;; Remove the worktree first
+  (git-worktree-remove path force)
+  ;; Delete local branch
+  (ignore-errors (git-run "branch" "-D" branch))
+  ;; Optionally delete remote branch
+  (when delete-remote
+    (ignore-errors (git-run "push" "origin" "--delete" branch))))
+
+(defun enter-worktree (worktree-path)
+  "Switch gilt's current repository context to the worktree at WORKTREE-PATH.
+   Pushes the current repo onto the parent-repo stack so it can be restored.
+   Returns T on success."
+  (let* ((repo (ensure-repo))
+         (norm-path (normalize-path worktree-path))
+         (name (worktree-basename norm-path)))
+    (push repo *parent-repo-stack*)
+    (setf *current-repo* (make-instance 'git-repository :path norm-path :name name))
+    t))
+
+(defun leave-worktree ()
+  "Leave the current worktree and restore the previous repository context.
+   Returns T if there was a parent repo to restore."
+  (leave-submodule))
+
+(defun git-worktree-repair (path)
+  "Repair worktree administrative files for the worktree at PATH."
+  (git-run "worktree" "repair" path))
+
+(defun git-worktree-candidate-paths ()
+  "Return a list of candidate parent directories for new worktrees.
+   Includes the repo root's parent directory, the parent directories of
+   existing worktrees, the configured default path (if any), and the home
+   directory, deduplicated. Useful for a location picker."
+  (let ((repo-root (git-repo-root))
+        (worktrees (git-worktree-list))
+        (default-path (gilt-worktree-default-path))
+        (candidates nil))
+    ;; Add parents of existing worktrees (in worktree order)
+    (dolist (wt worktrees)
+      (let* ((path (worktree-path wt))
+             (norm (normalize-path path))
+             (parts (cl-ppcre:split "/" norm))
+             (parent (when (>= (length parts) 2)
+                       (format nil "~{~A~^/~}" (subseq parts 0 (1- (length parts)))))))
+        (when (and parent (not (member parent candidates :test #'string=)))
+          (push parent candidates))))
+    ;; Add configured default path
+    (when (and default-path (> (length default-path) 0))
+      (let ((expanded (expand-tilde-path default-path)))
+        ;; Resolve relative paths against repo root
+        (let ((resolved (if (or (char= (char expanded 0) #\/)
+                                (string= expanded "~"))
+                            expanded
+                            (when repo-root
+                              (concatenate 'string
+                                           (string-right-trim '(#\/) repo-root)
+                                           "/" expanded)))))
+          (when (and resolved (not (member resolved candidates :test #'string=)))
+            (push resolved candidates)))))
+    ;; Add repo root's parent as fallback
+    (when repo-root
+      (let* ((norm (normalize-path repo-root))
+             (parts (cl-ppcre:split "/" norm))
+             (parent (when (>= (length parts) 2)
+                       (format nil "~{~A~^/~}" (subseq parts 0 (1- (length parts)))))))
+        (when (and parent (not (member parent candidates :test #'string=)))
+          (push parent candidates))))
+    ;; Add home directory as a common choice
+    (let ((home (namestring (user-homedir-pathname))))
+      (unless (member home candidates :test #'string=)
+        (push home candidates)))
+    (nreverse candidates)))
+
+(defun expand-tilde-path (path)
+  "Expand a leading ~ in PATH to the user's home directory."
+  (if (and (> (length path) 0) (char= (char path 0) #\~))
+      (concatenate 'string (namestring (user-homedir-pathname))
+                   (subseq path 1))
+      path))
+
+(defun gilt-worktree-config-file ()
+  "Path to the gilt worktree config file."
+  (merge-pathnames "worktree.conf" (gilt-config-dir)))
+
+(defun gilt-worktree-default-path ()
+  "Read the configured default parent directory for new worktrees from
+   ~/.config/gilt/worktree.conf. Returns the path string or nil.
+   Format: one line 'defaultPath=<path>', comments start with #."
+  (let ((file (gilt-worktree-config-file)))
+    (when (probe-file file)
+      (with-open-file (s file :direction :input)
+        (loop for line = (read-line s nil nil)
+              while line
+              for trimmed = (string-trim '(#\Space #\Tab) line)
+              when (and (> (length trimmed) 0)
+                        (char/= (char trimmed 0) #\#)
+                        (search "defaultPath=" trimmed))
+                do (return (string-trim '(#\Space #\Tab)
+                                        (subseq trimmed (+ 12 (search "defaultPath=" trimmed))))))))))
+
+(defun git-run-in-dir (dir &rest args)
+  "Run a git command in directory DIR (not the current repo) and return output.
+   Uses --git-dir and --work-tree to target a different worktree."
+  ;; For linked worktrees, .git is a file pointing to the real gitdir.
+  ;; For the main worktree, .git is a directory. Either way, git accepts
+  ;; --git-dir pointing at it. But for linked worktrees we need the actual
+  ;; gitdir. Fall back to just running in that directory.
+  (with-output-to-string (s)
+    (sb-ext:run-program "/usr/bin/git" args
+                        :output s
+                        :error nil
+                        :search t
+                        :directory (pathname (concatenate 'string
+                                                          (string-right-trim '(#\/) dir)
+                                                          "/")))))
+
+(defun git-fast-forward-in-worktree (branch worktree-path)
+  "Fast-forward BRANCH to match its upstream, running the fetch in the
+   worktree at WORKTREE-PATH so the branch ref updates without needing to
+   switch into that worktree. Returns the git output."
+  (let ((remote (or (git-upstream-remote branch) "origin"))
+        (upstream-branch (or (git-upstream-branch branch) branch)))
+    (apply #'git-run-in-dir worktree-path
+           (list "fetch" remote
+                 (format nil "~A:~A" upstream-branch branch)))))
+
+(defun git-upstream-remote (branch)
+  "Get the upstream remote name for BRANCH (e.g. 'origin'), or nil."
+  (ignore-errors
+    (let ((ref (git-run "for-each-ref"
+                        "--format=%(upstream:short)"
+                        (concatenate 'string "refs/heads/" branch))))
+      (let ((trimmed (string-trim '(#\Newline #\Space) ref)))
+        (when (and trimmed (> (length trimmed) 0))
+          (let ((slash-pos (position #\/ trimmed)))
+            (when slash-pos
+              (subseq trimmed 0 slash-pos))))))))
+
+(defun git-upstream-branch (branch)
+  "Get the upstream branch name for BRANCH (without remote prefix), or nil."
+  (ignore-errors
+    (let ((ref (git-run "for-each-ref"
+                        "--format=%(upstream:short)"
+                        (concatenate 'string "refs/heads/" branch))))
+      (let ((trimmed (string-trim '(#\Newline #\Space) ref)))
+        (when (and trimmed (> (length trimmed) 0))
+          (let ((slash-pos (position #\/ trimmed)))
+            (when slash-pos
+              (subseq trimmed (1+ slash-pos)))))))))
 
 ;;; Stash management
 
@@ -1873,11 +2467,4 @@ Returns alist of (char . command-string)."
     (error () (values nil nil))))
 
 ;;; Rename similarity threshold
-
-(defparameter *rename-threshold* nil
-  "Git rename detection threshold (0-100). nil means use git default.")
-
-(defun rename-threshold-arg ()
-  "Return the -M<threshold> argument string if threshold is set, or nil."
-  (when *rename-threshold*
-    (format nil "-M~D%" *rename-threshold*)))
+;;; (definition moved to top of file with other parameters)

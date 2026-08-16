@@ -401,6 +401,33 @@
    (show-worktrees :accessor show-worktrees :initform nil)
    ;; Stash view toggle (stash-list already exists above)
    (show-stashes :accessor show-stashes :initform nil)
+   ;; Reflog view
+   (show-reflog :accessor show-reflog :initform nil)
+   (reflog-list :accessor reflog-list :initform nil)
+   ;; Grep view
+   (show-grep :accessor show-grep :initform nil)
+   (grep-results :accessor grep-results :initform nil)
+   (grep-query :accessor grep-query :initform nil)
+   ;; Tree/Blob browsing
+   (tree-mode :accessor tree-mode :initform nil)
+   (tree-ref :accessor tree-ref :initform nil)
+   (tree-path :accessor tree-path :initform nil)
+   (tree-entries :accessor tree-entries :initform nil)
+   ;; Multi-commit cherry-pick (copy/paste)
+   (copied-commits :accessor copied-commits :initform nil)
+   ;; Line range tracing (git log -L)
+   (trace-mode :accessor trace-mode :initform nil)
+   (trace-file :accessor trace-file :initform nil)
+   (trace-start-line :accessor trace-start-line :initform nil)
+   (trace-end-line :accessor trace-end-line :initform nil)
+   (trace-entries :accessor trace-entries :initform nil)
+   ;; Blame enhancements
+   (blame-ref :accessor blame-ref :initform nil)        ; ref to blame at (nil = HEAD)
+   (blame-copies :accessor blame-copies :initform nil)  ; -C flag enabled
+   ;; Diff search
+   (diff-search-mode :accessor diff-search-mode :initform nil)
+   (diff-search-query :accessor diff-search-query :initform nil)
+   (diff-search-matches :accessor diff-search-matches :initform nil)  ; list of match line indices
    ;; Interactive rebase mode
    (rebase-mode :accessor rebase-mode :initform nil)
    (rebase-entries :accessor rebase-entries :initform nil)
@@ -591,6 +618,77 @@
                                       (:green ,(format nil "  ~A" path))
                                       (:bright-black ,(format nil " [~A]" branch)))))))
                  (list (list :colored :bright-black "  No worktrees")))))
+      ;; Reflog view
+      ((show-reflog view)
+       (let* ((reflog (or (reflog-list view) (setf (reflog-list view) (git-reflog))))
+              (filtered-reflog
+                (if (and (filter-query view) (eql (filter-panel view) 1))
+                    (remove-if-not
+                     (lambda (e)
+                       (or (fuzzy-match-p (filter-query view) (reflog-message e))
+                           (fuzzy-match-p (filter-query view) (reflog-short-hash e))))
+                     reflog)
+                    reflog)))
+         (setf (panel-title (files-panel view))
+               (if (and (filter-query view) (eql (filter-panel view) 1))
+                   (format nil "[2] Reflog (filter: ~A)" (filter-query view))
+                   (numbered-title 2 "Reflog" '("Stashes" "Files"))))
+         (setf (panel-items (files-panel view))
+               (if filtered-reflog
+                   (loop for entry in filtered-reflog
+                         collect (let ((short (reflog-short-hash entry))
+                                       (selector (reflog-selector entry))
+                                       (msg (reflog-message entry)))
+                                 `(:multi-colored
+                                   (:yellow ,(format nil "  ~A " (or selector "")))
+                                   (:bright-black ,(format nil "~A " (or short "")))
+                                   (:white ,(or msg "")))))
+                   (list (list :colored :bright-black "  No reflog entries"))))))
+      ;; Grep view
+      ((show-grep view)
+       (let ((results (grep-results view)))
+         (setf (panel-title (files-panel view))
+               (if (grep-query view)
+                   (format nil "[2] Grep: ~A" (grep-query view))
+                   (numbered-title 2 "Grep" '("Reflog" "Files"))))
+         (setf (panel-items (files-panel view))
+               (cond
+                 ((null (grep-query view))
+                  (list (list :colored :bright-black "  Press / to search")))
+                 ((null results)
+                  (list (list :colored :bright-black "  No matches")))
+                 (t
+                  (loop for r in results
+                        collect (let ((file (grep-result-file r))
+                                      (line (grep-result-line r))
+                                      (content (grep-result-content r)))
+                                  `(:multi-colored
+                                    (:bright-green ,(format nil "  ~A:" file))
+                                    (:bright-yellow ,(format nil "~D:" line))
+                                    (:white ,(string-left-trim '(#\Space #\Tab) content))))))))))
+      ;; Tree browsing view
+      ((tree-mode view)
+       (let* ((ref (tree-ref view))
+              (path (or (tree-path view) ""))
+              (entries (git-ls-tree ref path)))
+         (setf (tree-entries view) entries)
+         (setf (panel-title (files-panel view))
+               (format nil "[2] Tree: ~A~@[/~A~]" ref (if (and path (> (length path) 0)) path nil)))
+         (setf (panel-items (files-panel view))
+               (append
+                (when (and path (> (length path) 0))
+                  (list `(:multi-colored (:bright-blue "  ../"))))
+                (let ((dirs (remove-if-not (lambda (e) (eql (tree-entry-type e) :tree)) entries))
+                      (files (remove-if-not (lambda (e) (eql (tree-entry-type e) :blob)) entries)))
+                  (append
+                   (loop for d in dirs
+                         collect `(:multi-colored
+                                   (:bright-blue "  [D] ")
+                                   (:bright-cyan ,(tree-entry-name d))))
+                   (loop for f in files
+                         collect `(:multi-colored
+                                   (:bright-black "  [F] ")
+                                   (:white ,(tree-entry-name f))))))))))
       ;; Files view (default)
       (t
        (let ((filtered-entries (if (and (filter-query view) (eql (filter-panel view) 1))
@@ -705,7 +803,10 @@
     (setf (panel-items (commits-panel view))
           (loop for c in filtered-commits
                 for i from 0
-                collect (format-commit-entry c (= i 0)))))
+                collect (format-commit-entry c (= i 0)
+                                             (member (log-entry-hash c)
+                                                     (copied-commits view)
+                                                     :test #'string=)))))
   ;; Stash panel
   (let* ((stashes (git-stash-list))
          (filtered-stashes (if (and (filter-query view) (eql (filter-panel view) 4))
@@ -810,22 +911,23 @@
             (string-upcase (subseq clean 0 (min 2 (length clean))))))
       "??"))
 
-(defun format-commit-entry (commit is-head)
-  "Format a commit entry with colored hash, initials, and indicator"
-  ;; Format: hash initials ○ message
-  ;; The panel renderer will handle this as a multi-segment colored item
+(defun format-commit-entry (commit is-head &optional copied)
+  "Format a commit entry with colored hash, initials, and indicator.
+   COPIED, if true, shows a + marker to indicate the commit is in the copy list."
   (let* ((hash (log-entry-short-hash commit))
          (author (log-entry-author commit))
          (initials (get-author-initials author))
          (message (log-entry-message commit))
-         (indicator (if is-head
-                       (if (nerd-fonts-p) (icon :head) "●")
-                       (if (nerd-fonts-p) (icon :commit) "○"))))
-    ;; Return as colored segments list for rich rendering
+         (indicator (cond
+                      (copied "+")
+                      (is-head
+                       (if (nerd-fonts-p) (icon :head) "*"))
+                      (t (if (nerd-fonts-p) (icon :commit) "o"))))
+         (indicator-color (if copied :bright-magenta :bright-green)))
     (list :multi-colored
           (list :bright-yellow hash)
           (list :bright-cyan (format nil " ~A " initials))
-          (list :bright-green indicator)
+          (list indicator-color indicator)
           (list :white (format nil " ~A" message)))))
 
 (defvar *custom-pager* nil
@@ -973,6 +1075,71 @@
          ((show-worktrees view)
           (setf (panel-title (main-panel view)) "[0] Worktree")
           (setf (panel-items (main-panel view)) nil))
+         ;; Reflog view - show reflog entry diff
+         ((show-reflog view)
+          (let ((reflog (reflog-list view)))
+            (if (and reflog (< selected (length reflog)))
+                (let* ((entry (nth selected reflog))
+                       (selector (reflog-selector entry))
+                       (diff (git-reflog-diff selector)))
+                  (setf (panel-title (main-panel view)) "[0] Reflog Diff")
+                  (setf (panel-items (main-panel view))
+                        (format-diff-lines diff)))
+                (progn
+                  (setf (panel-title (main-panel view)) "[0] Reflog")
+                  (setf (panel-items (main-panel view)) nil)))))
+         ;; Grep view - show file content at matching line
+         ((show-grep view)
+          (let ((results (grep-results view)))
+            (if (and results (< selected (length results)))
+                (let* ((r (nth selected results))
+                       (file (grep-result-file r))
+                       (line (grep-result-line r))
+                       (content (git-show-file "HEAD" file)))
+                  (setf (panel-title (main-panel view))
+                        (format nil "[0] ~A:~D" file line))
+                  (setf (panel-items (main-panel view))
+                        (let ((lines (cl-ppcre:split "\\n" content))
+                              (context 5))
+                          (let* ((start (max 0 (- line context)))
+                                 (end (min (length lines) (+ line context 1))))
+                            (loop for i from start below end
+                                  for l = (nth i lines)
+                                  for line-num = (1+ i)
+                                  collect (if (= line-num line)
+                                              `(:multi-colored
+                                                (:bright-yellow ,(format nil "~5D " line-num))
+                                                (:bright-green ,(or l "")))
+                                              `(:multi-colored
+                                                (:bright-black ,(format nil "~5D " line-num))
+                                                (:white ,(or l "")))))))))
+                (progn
+                  (setf (panel-title (main-panel view)) "[0] Grep")
+                  (setf (panel-items (main-panel view)) nil)))))
+         ;; Tree mode - show blob content for selected file
+         ((tree-mode view)
+          (let* ((entries (tree-entries view))
+                 (path (or (tree-path view) ""))
+                 (has-parent (and path (> (length path) 0)))
+                 (adjusted-idx (if has-parent (1- selected) selected)))
+            (if (and entries (>= adjusted-idx 0) (< adjusted-idx (length entries)))
+                (let* ((entry (nth adjusted-idx entries)))
+                  (if (eql (tree-entry-type entry) :blob)
+                      (let ((content (git-show-file (tree-ref view) (tree-entry-path entry))))
+                        (setf (panel-title (main-panel view))
+                              (format nil "[0] ~A" (tree-entry-path entry)))
+                        (setf (panel-items (main-panel view))
+                              (let ((lines (cl-ppcre:split "\\n" content)))
+                                (loop for l in lines for i from 1 to 500
+                                      collect `(:multi-colored
+                                                (:bright-black ,(format nil "~5D " i))
+                                                (:white ,(or l "")))))))
+                      (progn
+                        (setf (panel-title (main-panel view)) "[0] Tree")
+                        (setf (panel-items (main-panel view)) nil))))
+                (progn
+                  (setf (panel-title (main-panel view)) "[0] Tree")
+                  (setf (panel-items (main-panel view)) nil)))))
          ;; Files view - show file diff
          (t
           (let ((entries (status-entries view)))
@@ -980,10 +1147,10 @@
               (let* ((entry (nth selected entries))
                      (file (status-entry-file entry))
                      (diff (if (status-entry-staged-p entry)
-                               (git-diff-staged file
+                               (git-diff-staged :file file
                                                 :context-size (diff-context-size view)
                                                 :ignore-whitespace (diff-ignore-whitespace view))
-                               (git-diff file
+                               (git-diff :file file
                                          :context-size (diff-context-size view)
                                          :ignore-whitespace (diff-ignore-whitespace view)))))
                 (setf (panel-title (main-panel view)) "[0] Diff")
@@ -1054,7 +1221,7 @@
         '(("j/k" . "navigate") ("Enter" . "checkout") ("n" . "new") ("N" . "rename")
           ("w" . "local/remote") ("M" . "merge") ("R" . "rebase") ("F" . "ff") ("d" . "diff") ("s" . "sort") ("D" . "delete") ("r" . "refresh") ("q" . "quit")))))
     (3 ; Commits panel
-     '(("j/k" . "navigate") ("i" . "rebase") ("g" . "graph") ("X" . "reset") ("A" . "amend") ("C" . "cherry-pick") ("R" . "revert") ("S" . "squash") ("F" . "fixup") ("M" . "move to branch") ("t" . "tag") ("b" . "bisect") ("o" . "browser") ("r" . "refresh") ("q" . "quit")))
+     '(("j/k" . "navigate") ("i" . "rebase") ("g" . "graph") ("X" . "reset") ("A" . "amend") ("C" . "cherry-pick") ("Space" . "copy") ("V" . "paste") ("R" . "revert") ("S" . "squash") ("F" . "fixup") ("M" . "move to branch") ("t" . "tag") ("T" . "tree") ("b" . "bisect") ("o" . "browser") ("r" . "refresh") ("q" . "quit")))
     (4 ; Stash panel
      '(("j/k" . "navigate") ("s" . "stash") ("g" . "pop") ("D" . "drop") ("r" . "refresh") ("q" . "quit")))
     (t ; Default
@@ -1226,13 +1393,14 @@
                        "   Tab/l      Next panel    h  Previous panel"
                        "   j/Down     Move down     k/Up  Move up"
                        "   Enter      Select/expand item"
+                       "   / (in diff)  Search within diff, n/N to navigate matches"
                        ""
                        " FILES (panel 2)"
                        "   Space      Stage/unstage file"
                        "   a          Stage all files"
                        "   d          Discard changes (unstaged)"
                        "   e          Edit file / enter hunk mode"
-                       "   b          Blame view (Enter for commit info)"
+                       "   b          Blame view (Enter=commit info, L=line trace, p=parent, C=copies, o=open)"
                        "   o          Resolve conflict: keep ours"
                        "   t          Resolve conflict: keep theirs"
                        "   X          Abort merge"
@@ -1253,6 +1421,7 @@
                        "   Enter      Browse commit files"
                        "   M          Move commits to new branch"
                        "   t          Create tag on commit"
+                       "   T          Browse tree at commit"
                        "   c          New commit (Ctrl+D to submit)"
                        "   C          Commit with $EDITOR"
                        "   A          Amend HEAD commit"
@@ -1260,6 +1429,8 @@
                        "   F          Create fixup! commit"
                        "   S          Squash commits"
                        "   C          Cherry-pick commit"
+                       "   Space      Toggle copy (for multi-cherry-pick)"
+                       "   V          Paste copied commits (cherry-pick all)"
                        "   R          Revert commit"
                        "   i          Interactive rebase (select range)"
                        "   b          Bisect (start, then b:bad g:good Q:reset)"
@@ -1715,6 +1886,18 @@
                     (setf (cherry-pick-branch view) nil)
                     (setf (cherry-pick-commits view) nil))
                   (refresh-data view))))
+             ;; Multi cherry-pick dialog
+             ((string= (dialog-title dlg) "Cherry-Pick Copied Commits")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-idx (dialog-selected-button dlg))
+                     (selected-button (nth selected-idx buttons)))
+                (when (string= selected-button "Pick All")
+                  (let ((hashes (reverse (copied-commits view))))
+                    (log-command view (format nil "git cherry-pick ~{~A ~}" hashes))
+                    (dolist (hash hashes)
+                      (git-cherry-pick hash))
+                    (setf (copied-commits view) nil)
+                    (refresh-data view)))))
              ;; Revert dialog
              ((string= (dialog-title dlg) "Revert Commit")
               (let ((hash (getf (dialog-data dlg) :hash)))
@@ -2031,6 +2214,34 @@
                       (dolist (line (cl-ppcre:split "\\n" (string-trim '(#\Newline #\Return) output)))
                         (log-command view line)))
                     (refresh-data view)))))
+             ;; Grep dialog
+             ((string= (dialog-title dlg) "Grep")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-idx (dialog-selected-button dlg))
+                     (selected-button (nth selected-idx buttons)))
+                (when (string= selected-button "Search")
+                  (let ((query (first (dialog-input-lines dlg))))
+                    (when (and query (> (length query) 0))
+                      (setf (grep-query view) query)
+                      (setf (grep-results view) (git-grep query))
+                      (setf (panel-selected (files-panel view)) 0)
+                      (refresh-data view))))))
+             ;; Filter Reflog dialog
+             ((string= (dialog-title dlg) "Filter Reflog")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-idx (dialog-selected-button dlg))
+                     (selected-button (nth selected-idx buttons)))
+                (cond
+                  ((string= selected-button "Filter")
+                   (let ((query (first (dialog-input-lines dlg))))
+                     (when (and query (> (length query) 0))
+                       (setf (filter-query view) (string-downcase query))
+                       (setf (filter-panel view) 1)
+                       (refresh-data view))))
+                  ((string= selected-button "Clear")
+                   (setf (filter-query view) nil)
+                   (setf (filter-panel view) nil)
+                   (refresh-data view)))))
              ;; Filter Files dialog
              ((string= (dialog-title dlg) "Filter Files")
               (let* ((buttons (dialog-buttons dlg))
@@ -2079,6 +2290,40 @@
                    (setf (filter-query view) nil)
                    (setf (filter-panel view) nil)
                    (refresh-data view)))))
+             ;; Search Diff dialog
+             ((string= (dialog-title dlg) "Search Diff")
+              (let* ((buttons (dialog-buttons dlg))
+                     (selected-idx (dialog-selected-button dlg))
+                     (selected-button (nth selected-idx buttons)))
+                (cond
+                  ((string= selected-button "Search")
+                   (let ((query (first (dialog-input-lines dlg))))
+                     (when (and query (> (length query) 0))
+                       (setf (diff-search-mode view) t)
+                       (setf (diff-search-query view) (string-downcase query))
+                       (let ((matches nil)
+                             (items (panel-items (main-panel view))))
+                         (loop for item in items
+                               for i from 0
+                               when (search (diff-search-query view)
+                                            (if (stringp item)
+                                                (string-downcase item)
+                                                (format nil "~S" item))
+                                            :test #'char-equal)
+                                 do (push i matches))
+                         (setf (diff-search-matches view) (nreverse matches)))
+                       (if (diff-search-matches view)
+                           (progn
+                             (setf (panel-selected (main-panel view))
+                                   (first (diff-search-matches view)))
+                             (show-toast view (format nil "~D match~:P" (length (diff-search-matches view)))))
+                           (progn
+                             (setf (diff-search-mode view) nil)
+                             (show-toast view "No matches"))))))
+                  ((string= selected-button "Clear")
+                   (setf (diff-search-mode view) nil)
+                   (setf (diff-search-query view) nil)
+                   (setf (diff-search-matches view) nil)))))
              ;; Diff Compare dialog
              ((string= (dialog-title dlg) "Diff Compare")
               (let* ((buttons (dialog-buttons dlg))
@@ -2875,10 +3120,112 @@
        (panel-select-next (main-panel view)))
       ((or (eq (key-event-code key) +key-up+)
            (and (key-event-char key) (char= (key-event-char key) #\k)))
-       (panel-select-prev (main-panel view))))
+       (panel-select-prev (main-panel view)))
+      ;; p goes to parent commit's blame
+      ((and (key-event-char key) (char= (key-event-char key) #\p))
+       (let* ((blame-lines (blame-data view))
+              (selected (panel-selected (main-panel view))))
+         (when (and blame-lines (< selected (length blame-lines)))
+           (let* ((bl (nth selected blame-lines))
+                  (hash (blame-line-hash bl))
+                  (file (blame-file view)))
+             (let ((parent-blame (git-blame-parent file hash)))
+               (when parent-blame
+                 (setf (blame-data view) parent-blame)
+                 (setf (blame-ref view) (subseq hash 0 7))
+                 (setf (panel-title (main-panel view))
+                       (format nil "[0] Blame ~A^ (~A)" (or (blame-ref view) "HEAD") file))
+                 (setf (panel-selected (main-panel view)) 0)
+                 (show-toast view (format nil "Blame at parent of ~A" (blame-line-short-hash bl)))))))))
+      ;; C toggles copy detection (-C flag)
+      ((and (key-event-char key) (char= (key-event-char key) #\C))
+       (setf (blame-copies view) (not (blame-copies view)))
+       (let ((file (blame-file view)))
+         (setf (blame-data view)
+               (git-blame-at file :detect-copies (blame-copies view)))
+         (setf (panel-items (main-panel view))
+               (loop for bl in (blame-data view)
+                     collect `(:multi-colored
+                               (:bright-yellow ,(format nil "~8A " (blame-line-short-hash bl)))
+                               (:bright-cyan ,(format nil "~20A " (blame-line-author bl)))
+                               (:bright-black ,(format nil "~12A " (blame-line-date bl)))
+                               (:white ,(blame-line-content bl)))))
+         (show-toast view (format nil "Copy detection: ~A"
+                                  (if (blame-copies view) "ON" "OFF")))))
+      ;; o opens file at selected line in editor
+      ((and (key-event-char key) (char= (key-event-char key) #\o))
+       (let* ((blame-lines (blame-data view))
+              (selected (panel-selected (main-panel view))))
+         (when (and blame-lines (< selected (length blame-lines)))
+           (let* ((bl (nth selected blame-lines))
+                  (line-num (blame-line-num bl))
+                  (file (blame-file view)))
+             (git-edit-file file line-num)
+             (show-toast view (format nil "Opened ~A:~D" file line-num))))))
+      ;; L traces the selected line's history (git log -L)
+      ((and (key-event-char key) (char= (key-event-char key) #\L))
+       (let* ((blame-lines (blame-data view))
+              (selected (panel-selected (main-panel view))))
+         (when (and blame-lines (< selected (length blame-lines)))
+           (let* ((bl (nth selected blame-lines))
+                  (line-num (blame-line-num bl))
+                  (file (blame-file view)))
+             (setf (trace-mode view) t)
+             (setf (trace-file view) file)
+             (setf (trace-start-line view) line-num)
+             (setf (trace-end-line view) line-num)
+             (setf (trace-entries view)
+                   (git-log-line-range file line-num line-num))
+             (setf (panel-title (main-panel view))
+                   (format nil "[0] Trace: ~A:~D" file line-num))
+             (setf (panel-items (main-panel view))
+                   (if (trace-entries view)
+                       (loop for e in (trace-entries view)
+                             collect `(:multi-colored
+                                       (:bright-yellow ,(trace-short-hash e))
+                                       (:bright-cyan ,(format nil " ~A " (trace-author e)))
+                                       (:bright-black ,(format nil "~A " (trace-date e)))
+                                       (:white ,(trace-message e))))
+                       (list (list :colored :bright-black "  No trace entries"))))
+             (setf (panel-selected (main-panel view)) 0)
+             (show-toast view (format nil "Tracing ~A:~D" file line-num)))))))
     ;; Always return nil in blame mode to trigger re-render
     (return-from handle-key nil))
-  
+
+  ;; Handle trace mode - viewing line range history
+  (when (trace-mode view)
+    (cond
+      ((eq (key-event-code key) +key-escape+)
+       (setf (trace-mode view) nil)
+       (setf (trace-entries view) nil)
+       ;; Return to blame view
+       (setf (panel-title (main-panel view)) "[0] Blame")
+       (setf (panel-items (main-panel view))
+             (loop for bl in (blame-data view)
+                   collect `(:multi-colored
+                             (:bright-yellow ,(format nil "~8A " (blame-line-short-hash bl)))
+                             (:bright-cyan ,(format nil "~20A " (blame-line-author bl)))
+                             (:bright-black ,(format nil "~12A " (blame-line-date bl)))
+                             (:white ,(blame-line-content bl)))))
+       (setf (panel-selected (main-panel view)) 0))
+      ((eq (key-event-code key) +key-enter+)
+       (let* ((entries (trace-entries view))
+              (selected (panel-selected (main-panel view))))
+         (when (and entries (< selected (length entries)))
+           (let ((entry (nth selected entries)))
+             (setf (panel-title (main-panel view))
+                   (format nil "[0] Trace Diff: ~A" (trace-short-hash entry)))
+             (setf (panel-items (main-panel view))
+                   (format-diff-lines (trace-diff entry)))
+             (setf (panel-selected (main-panel view)) 0)))))
+      ((or (eq (key-event-code key) +key-down+)
+           (and (key-event-char key) (char= (key-event-char key) #\j)))
+       (panel-select-next (main-panel view)))
+      ((or (eq (key-event-code key) +key-up+)
+           (and (key-event-char key) (char= (key-event-char key) #\k)))
+       (panel-select-prev (main-panel view))))
+    (return-from handle-key nil))
+
   ;; Handle cherry-pick mode - viewing commits from another branch
   (when (cherry-pick-mode view)
     (cond
@@ -2915,7 +3262,39 @@
        (panel-select-prev (main-panel view))))
     ;; Always return nil in cherry-pick mode to trigger re-render
     (return-from handle-key nil))
-  
+
+  ;; Handle tree mode - browsing directory tree at a commit
+  (when (tree-mode view)
+    (cond
+      ((eq (key-event-code key) +key-escape+)
+       (let ((path (or (tree-path view) "")))
+         (if (and path (> (length path) 0))
+             (let ((parent-path (subseq path 0 (or (position #\/ path :from-end t) 0))))
+               (setf (tree-path view) parent-path)
+               (setf (panel-selected (files-panel view)) 0)
+               (refresh-data view))
+             (progn
+               (setf (tree-mode view) nil)
+               (setf (tree-ref view) nil)
+               (setf (tree-path view) nil)
+               (setf (tree-entries view) nil)
+               (refresh-data view)))))
+      ((and (key-event-char key) (char= (key-event-char key) #\q))
+       (setf (tree-mode view) nil)
+       (setf (tree-ref view) nil)
+       (setf (tree-path view) nil)
+       (setf (tree-entries view) nil)
+       (refresh-data view))
+      ((or (eq (key-event-code key) +key-down+)
+           (and (key-event-char key) (char= (key-event-char key) #\j)))
+       (panel-select-next (files-panel view))
+       (update-main-content view))
+      ((or (eq (key-event-code key) +key-up+)
+           (and (key-event-char key) (char= (key-event-char key) #\k)))
+       (panel-select-prev (files-panel view))
+       (update-main-content view)))
+    (return-from handle-key nil))
+
   ;; Handle search mode - viewing filtered commits
   (when (search-mode view)
     (cond
@@ -3349,12 +3728,75 @@
                       (make-dialog :title "Checkout Tag"
                                    :message (format nil "Checkout tag '~A' as detached HEAD?" (tag-name tag))
                                    :data (list :tag-name (tag-name tag))
-                                   :buttons '("Checkout" "Cancel"))))))))
+                                   :buttons '("Checkout" "Cancel")))))))
+         ;; Commits panel - toggle copy for multi-cherry-pick
+         ((= focused-idx 3)
+          (let* ((commits (commit-list view))
+                 (selected (panel-selected panel)))
+            (when (and commits (< selected (length commits)))
+              (let* ((commit (nth selected commits))
+                     (hash (log-entry-hash commit)))
+                (if (member hash (copied-commits view) :test #'string=)
+                    (setf (copied-commits view)
+                          (remove hash (copied-commits view) :test #'string=))
+                    (push hash (copied-commits view)))
+                (show-toast view (format nil "~D commit~:P copied" (length (copied-commits view)))))))))
        nil)
       ;; Enter on branches - checkout local or track remote
       ;; Enter on stashes view - apply stash
       ((eq (key-event-code key) +key-enter+)
        (cond
+         ;; Reflog view - show reflog entry details
+         ((and (= focused-idx 1) (show-reflog view))
+          (let* ((reflog (reflog-list view))
+                 (selected (panel-selected (files-panel view))))
+            (when (and reflog (< selected (length reflog)))
+              (let* ((entry (nth selected reflog))
+                     (hash (reflog-hash entry))
+                     (full-message (git-commit-message hash))
+                     (message-lines (cl-ppcre:split "\\n" (string-trim '(#\Newline #\Space) full-message))))
+                (setf (panel-title (main-panel view)) "[0] Reflog Commit")
+                (setf (panel-items (main-panel view))
+                      (append (list (format nil "Hash: ~A" hash)
+                                    (format nil "Selector: ~A" (reflog-selector entry))
+                                    (format nil "Action: ~A" (reflog-message entry))
+                                    "")
+                              message-lines))))))
+         ;; Tree mode - navigate tree
+         ((and (= focused-idx 1) (tree-mode view))
+          (let* ((entries (tree-entries view))
+                 (selected (panel-selected (files-panel view)))
+                 (path (or (tree-path view) ""))
+                 (has-parent (and path (> (length path) 0))))
+            (cond
+             ((and has-parent (= selected 0))
+              (let ((parent-path (subseq path 0 (or (position #\/ path :from-end t) 0))))
+                (setf (tree-path view) parent-path)
+                (setf (panel-selected (files-panel view)) 0)
+                (refresh-data view)))
+             ((and entries (>= (if has-parent (1- selected) selected) 0)
+                   (< (if has-parent (1- selected) selected) (length entries)))
+              (let* ((idx (if has-parent (1- selected) selected))
+                     (entry (nth idx entries)))
+                (cond
+                  ((eql (tree-entry-type entry) :tree)
+                   (setf (tree-path view) (tree-entry-path entry))
+                   (setf (panel-selected (files-panel view)) 0)
+                   (refresh-data view))
+                  ((eql (tree-entry-type entry) :blob)
+                   (update-main-content view))
+                  (t nil)))))))
+         ;; Grep view - open file at matching line in editor
+         ((and (= focused-idx 1) (show-grep view))
+          (let* ((results (grep-results view))
+                 (selected (panel-selected (files-panel view))))
+            (when (and results (< selected (length results)))
+              (let* ((r (nth selected results))
+                     (file (grep-result-file r))
+                     (line (grep-result-line r)))
+                (log-command view (format nil "Open ~A:~D in editor" file line))
+                (git-edit-file file line)
+                (refresh-data view)))))
          ;; Stashes view - apply stash
          ((and (= focused-idx 1) (show-stashes view))
           (let* ((stashes (stash-list view))
@@ -3895,6 +4337,24 @@
                              :input-mode t
                              :buttons '("Create" "Cancel")))))
        nil)
+      ;; Browse tree at commit - 'T' (capital, when on commits panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\T)
+            (= focused-idx 3))
+       (let* ((commits (commit-list view))
+              (selected (panel-selected panel)))
+         (when (and commits (< selected (length commits)))
+           (let ((commit (nth selected commits)))
+             (setf (tree-mode view) t)
+             (setf (tree-ref view) (log-entry-hash commit))
+             (setf (tree-path view) "")
+             (setf (panel-selected (files-panel view)) 0)
+             (setf (show-worktrees view) nil)
+             (setf (show-stashes view) nil)
+             (setf (show-reflog view) nil)
+             (setf (show-grep view) nil)
+             (refresh-data view)
+             (show-toast view (format nil "Browsing tree at ~A" (log-entry-short-hash commit))))))
+       nil)
       ;; Push tag - 'T' (capital, when on branches panel in tags view)
       ((and (key-event-char key) (char= (key-event-char key) #\T))
        (when (and (= focused-idx 2) (show-tags view))
@@ -4083,13 +4543,24 @@
       ;; Toggle views - 'w' (when on files or branches panel)
       ((and (key-event-char key) (char= (key-event-char key) #\w))
        (cond
-         ;; Files panel - cycle Files -> Worktrees -> Stashes -> Files
+         ;; Files panel - cycle Files -> Worktrees -> Stashes -> Reflog -> Grep -> Files
          ((= focused-idx 1)
           (cond
-            ((show-stashes view)
-             ;; Stashes -> Files
+            ((show-grep view)
+             ;; Grep -> Files
+             (setf (show-grep view) nil)
+             (setf (show-reflog view) nil)
              (setf (show-stashes view) nil)
              (setf (show-worktrees view) nil))
+            ((show-reflog view)
+             ;; Reflog -> Grep
+             (setf (show-reflog view) nil)
+             (setf (show-grep view) t))
+            ((show-stashes view)
+             ;; Stashes -> Reflog
+             (setf (show-stashes view) nil)
+             (setf (show-reflog view) t)
+             (setf (reflog-list view) (git-reflog)))
             ((show-worktrees view)
              ;; Worktrees -> Stashes
              (setf (show-worktrees view) nil)
@@ -4314,6 +4785,18 @@
                                   :data (list :hash hash)
                                   :buttons '("Pick" "Cancel")))))))
        nil)
+      ;; Paste (multi-cherry-pick) - 'V' (capital, when on commits panel)
+      ((and (key-event-char key) (char= (key-event-char key) #\V)
+            (= focused-idx 3))
+       (let ((copied (copied-commits view)))
+         (if (null copied)
+             (show-toast view "No commits copied (use Space to select)")
+             (setf (active-dialog view)
+                   (make-dialog :title "Cherry-Pick Copied Commits"
+                                :message (format nil "Cherry-pick ~D commit~:P?" (length copied))
+                                :data (list :multi-cherry-pick t)
+                                :buttons '("Pick All" "Cancel")))))
+       nil)
       ;; Revert - 'R' (capital, when on commits panel)
       ((and (key-event-char key) (char= (key-event-char key) #\R)
             (= focused-idx 3))
@@ -4414,12 +4897,25 @@
                 (make-dialog :title "Filter Commits"
                              :input-mode t
                              :buttons '("Filter" "Search" "Clear" "Cancel"))))
-         ;; Files panel - filter files
+         ;; Files panel - filter files, or reflog/grep search
          ((= focused-idx 1)
-          (setf (active-dialog view)
-                (make-dialog :title "Filter Files"
-                             :input-mode t
-                             :buttons '("Filter" "Clear" "Cancel"))))
+          (cond
+            ((show-grep view)
+             (setf (active-dialog view)
+                   (make-dialog :title "Grep"
+                                :message "Enter search pattern:"
+                                :input-mode t
+                                :buttons '("Search" "Cancel"))))
+            ((show-reflog view)
+             (setf (active-dialog view)
+                   (make-dialog :title "Filter Reflog"
+                                :input-mode t
+                                :buttons '("Filter" "Clear" "Cancel"))))
+            (t
+             (setf (active-dialog view)
+                   (make-dialog :title "Filter Files"
+                                :input-mode t
+                                :buttons '("Filter" "Clear" "Cancel"))))))
          ;; Branches panel - filter branches
          ((= focused-idx 2)
           (setf (active-dialog view)
@@ -4431,7 +4927,14 @@
           (setf (active-dialog view)
                 (make-dialog :title "Filter Stashes"
                              :input-mode t
-                             :buttons '("Filter" "Clear" "Cancel")))))
+                             :buttons '("Filter" "Clear" "Cancel"))))
+         ;; Main panel (focused) - search within diff
+         ((and (= focused-idx 0) (panel-focused (main-panel view)))
+          (setf (active-dialog view)
+                (make-dialog :title "Search Diff"
+                             :message "Enter search term:"
+                             :input-mode t
+                             :buttons '("Search" "Clear" "Cancel")))))
        nil)
       ;; Bisect - 'b' (when on commits panel)
       ((and (key-event-char key) (char= (key-event-char key) #\b)
@@ -4550,6 +5053,27 @@
                                                   i (hunk-header hunk)
                                                   (hunk-line-count hunk))))))))))))
        nil)
+      ;; Diff search navigation - n/N when diff search is active
+      ((and (diff-search-mode view)
+            (key-event-char key)
+            (char= (key-event-char key) #\n))
+       (let* ((matches (diff-search-matches view))
+              (current (panel-selected (main-panel view))))
+         (when matches
+           (let ((next (find current matches :test #'>)))
+             (setf (panel-selected (main-panel view))
+                   (or next (first matches)))
+             (update-main-content view)))))
+      ((and (diff-search-mode view)
+            (key-event-char key)
+            (char= (key-event-char key) #\N))
+       (let* ((matches (diff-search-matches view))
+              (current (panel-selected (main-panel view))))
+         (when matches
+           (let ((prev (find current matches :test #'< :from-end t)))
+             (setf (panel-selected (main-panel view))
+                   (or prev (first (last matches))))
+             (update-main-content view)))))
       ;; Custom command keybindings fallback
       ((and (key-event-char key)
             (let ((custom-cmds (load-custom-commands)))

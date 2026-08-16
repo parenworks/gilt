@@ -227,8 +227,7 @@
              (cond
                ;; Multi-colored item: (:multi-colored (color1 text1) (color2 text2) ...)
                ((and (consp item) (eq (car item) :multi-colored))
-                (let ((col (+ x 1))
-                      (remaining content-width))
+                (let ((remaining content-width))
                   (dolist (segment (cdr item))
                     (when (> remaining 0)
                       (let* ((seg-color (first segment))
@@ -352,16 +351,20 @@
          :documentation "Arbitrary data storage for dialog context"))
   (:documentation "A modal dialog box with optional multi-line input"))
 
-(defun make-dialog (&key title message (buttons '("OK" "Cancel")) input-mode multiline data)
-  "Create a dialog"
-  (make-instance 'dialog
-                 :title title
-                 :message message
-                 :buttons buttons
-                 :input-mode input-mode
-                 :multiline multiline
-                 :data data
-                 :height (if multiline 12 3)))
+(defun make-dialog (&key title message (buttons '("OK" "Cancel")) input-mode multiline data
+                      input-buffer)
+  "Create a dialog. INPUT-BUFFER (optional string) pre-fills the input field."
+  (let ((dlg (make-instance 'dialog
+                            :title title
+                            :message message
+                            :buttons buttons
+                            :input-mode input-mode
+                            :multiline multiline
+                            :data data
+                            :height (if multiline 12 3))))
+    (when input-buffer
+      (setf (dialog-input-lines dlg) (list input-buffer)))
+    dlg))
 
 (defmethod print-object ((dlg dialog) stream)
   (print-unreadable-object (dlg stream :type t)
